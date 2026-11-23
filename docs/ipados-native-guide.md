@@ -13,6 +13,8 @@ By building **Structorizer Web** as a zero-dependency, client-side TypeScript ap
 1. Serve or host the `release/structorizer-web/` folder over HTTPS (or open `structorizer-single.html` directly in Files / Safari).
 2. In Safari on iPadOS, tap **Share → Add to Home Screen**.
 3. The bundled Service Worker (`sw.js`) and `manifest.webmanifest` cache all application assets locally so Structorizer launches full-screen (`display: standalone`) and works 100% offline.
+4. Structorizer shows this guide itself: in a Safari tab on an iPad or iPhone a short dialog explains the steps once ("Not now": again after 14 days, "Do not show again": never; never in the Home Screen app or the single-file edition). It is always available under **Help > Add to Home Screen (iPad) ...**. Rules: `src/ui/installTipRules.ts` (tests in `tests/review-fixes.test.ts`), dialog: `src/ui/InstallTip.tsx`.
+5. The Home Screen app has its own storage, separate from Safari: save diagrams as `.nsd` files before switching and open them there again. The app asks for persistent storage (`navigator.storage.persist()`) so iPadOS does not clear the autosave.
 
 ---
 

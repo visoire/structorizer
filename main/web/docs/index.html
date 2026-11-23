@@ -49,7 +49,7 @@
             <li>All element types of Structorizer Desktop 3.32: instruction, IF, CASE, FOR, WHILE, REPEAT, endless loop, call, exit (jump), parallel section and try-catch.</li>
             <li>Programs, subroutines and includable diagrams, several open at once (<a href="#arranger">Arranger index &amp; 2D board</a>, <code>.arrz</code> and <code>.arr</code> archives).</li>
             <li>Opens and saves the <code>.nsd</code> files of Structorizer Desktop, so teachers and pupils can switch between both.</li>
-            <li><strong>Executor &amp; Debugger</strong> (<kbd>Ctrl</kbd>+<kbd>R</kbd>): step-by-step and continuous execution with editable variable watch, breakpoints (<kbd>Ctrl</kbd>+<kbd>B</kbd>), call stack, subroutine calls and coverage overlay.</li>
+            <li><strong>Executor &amp; Debugger</strong> (<kbd>Ctrl</kbd>+<kbd>R</kbd>): step-by-step and continuous execution with editable variable watch, breakpoints (<kbd>Ctrl</kbd>+<kbd>B</kbd>), call stack, subroutine calls and coverage overlay. With <em>Coverage</em> on, the execution counts add up over several runs; <em>Reset</em> next to it (or <em>Debug</em> menu) clears them.</li>
             <li><strong>Turtleizer Studio</strong> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>): interactive turtle graphics with pan/zoom, coordinate grid, dockable or floating window, and SVG/PNG export.</li>
             <li><strong>Static Analyser &amp; Content Assist</strong> (<kbd>F3</kbd>): live <code>A01</code>–<code>A09</code> diagram checks, warning triangles on the canvas, and <kbd>Tab</kbd> autocomplete chips in the editor.</li>
             <li>Pictures as PNG, PNG (multiple), EMF, PDF and SVG, and printing.</li>
@@ -75,7 +75,7 @@
           <h2 id="examples">Examples</h2>
           <p><em>File › Examples</em> contains a temperature table, a diagram with every element type, the recursive <code>hilbert</code> subroutine from the desktop samples, and the <code>CoffeeProtocol</code> easter egg.</p>
           <h2 id="ipad">On the iPad</h2>
-          <p>Open the address in Safari and choose <em>Share › Add to Home Screen</em>. Tap selects, double tap edits, a long press opens the context menu, and long press plus moving drags an element to a new place. Pinch to zoom.</p>
+          <p>Open the address in Safari and choose <em>Share › Add to Home Screen</em> (Structorizer shows these steps once in a Safari tab; <em>Help › Add to Home Screen (iPad) ...</em> shows them again). The Home Screen app runs full screen and offline, but has its own storage: save diagrams as <code>.nsd</code> files first and open them there. Tap selects, double tap edits, a long press opens the context menu, and long press plus moving drags an element to a new place. Pinch to zoom.</p>
         </article>
 
         <article data-page="editor" data-group="Start here" data-title="The editor" data-lead="Menus, toolbar, side panel and status bar.">
@@ -93,7 +93,7 @@
           <p>Hold <kbd>Shift</kbd> with <kbd>↑</kbd>/<kbd>↓</kbd> or tap with <kbd>Shift</kbd> to select a contiguous range of elements. Tap a branch header triangle of an IF or CASE element to colour individual branch headers.</p>
           <p><em>Diagram › Transmute</em> (<kbd>Ctrl</kbd>+<kbd>T</kbd>) merges multiple selected instructions into one, splits a multi-line instruction into single ones, or changes instruction ⇄ call ⇄ exit and WHILE ⇄ REPEAT. <em>Diagram › Outsource</em> moves the selected element(s) into a new subroutine and replaces them with a call.</p>
           <h2 id="view-options">View options</h2>
-          <p>The <em>View</em> menu has the desktop switches: show comments, comments plus texts, switch text/comments, highlight variables (<kbd>F4</kbd>), analyse structogram (<kbd>F3</kbd>), show operators in C style, and the 2D Arranger board (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>).</p>
+          <p>The <em>View</em> menu has the desktop switches: show comments, comments plus texts, switch text/comments, highlight variables (<kbd>F4</kbd>), analyse structogram (<kbd>F3</kbd>), show operators in C style, and the 2D Arranger board (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>). With <em>show comments</em> on, resting the pointer on a commented element or the diagram frame shows its comment in a pop-up.</p>
         </article>
 
         <article data-page="elements" data-group="Start here" data-title="Elements and syntax" data-lead="The element types and the text you write into them.">
@@ -161,6 +161,7 @@
 
         <article data-page="arranger" data-group="Files and export" data-title="Arranger &amp; .arrz archives" data-lead="Several diagrams at once: index list, 2D board and portable .arrz archives.">
           <p>The <em>Arranger index</em> tab lists all open diagrams, grouped into main programs, subroutines (with their number of parameters) and includables, followed by the live <em>Analyser</em> findings list (<kbd>F3</kbd>). Click a name to edit that diagram, the × closes it. A dot marks unsaved changes.</p>
+          <p><strong>Groups</strong>: an opened <code>.arrz</code> or <code>.arr</code> becomes a group named after the file. The folder button of a diagram (or <em>Group ...</em> above the list) puts it into a group, a new one or none. When groups exist the index lists the diagrams by group; each group can be collapsed, saved as <code>.arrz</code>, renamed or dissolved (its diagrams stay open). The board draws a frame around each group, and <em>Auto-layout grid</em> keeps every group in its own block.</p>
           <p>Click <em>Arranger board</em> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd>) to switch to the interactive 2D surface where all open diagrams appear as movable, pinnable cards. Export or open portable <code>.arrz</code> archives (ZIP containing <code>.nsd</code> files and <code>.arr</code> coordinates) via <em>File › Export › Arrangement (.arrz)</em> or <em>File › Open</em>.</p>
           <p>Subroutines in the index are resolved automatically by the Executor and Code preview, and includable diagrams named in a diagram's include list are executed/exported first.</p>
         </article>

@@ -198,16 +198,18 @@ export function parseExpr(src: string): Expr {
     const second = toks[pos + 1];
     if (
       typeName ||
-      (first?.k === 'id' && (second?.v === ':' || second?.v === '=' || second?.v === '<-')) ||
-      (first?.v === '.' && second?.k === 'id')
+      (first?.k === 'id' && second?.v === ':') ||
+      (first?.v === '.' && second?.k === 'id' && (toks[pos + 2]?.v === '=' || toks[pos + 2]?.v === ':'))
     ) {
       const fields: { name: string; value: Expr }[] = [];
       while (pos < toks.length && peek()?.v !== '}') {
         // "smart" record initializer (desktop 3.28-06): an item without a component name
         // (Date{2026, 11, 23}) gets the name '' and takes the component of its position
-        const a = toks[pos], b = toks[pos + 1];
-        const named = (a?.k === 'id' && (b?.v === ':' || b?.v === '=' || b?.v === '<-' || b?.v === ':='))
-          || (a?.v === '.' && toks[pos + 1]?.k === 'id');
+        // a component name is "name:" (desktop Element.splitRecordInitializer) or a C designator
+        // ".name =": "x = 5" is a comparison in Structorizer, never a component name
+        const a = toks[pos], b = toks[pos + 1], c = toks[pos + 2];
+        const named = (a?.k === 'id' && b?.v === ':')
+          || (a?.v === '.' && b?.k === 'id' && (c?.v === '=' || c?.v === ':'));
         let fName = '';
         if (named) {
           eat('.');
@@ -295,29 +297,62 @@ function parseTypedef(raw: string): StmtNode {
   const m = /^type\s+(\w+)\s*=\s*(?:record|struct)\s*\{?([^}]*)\}?/i.exec(raw.trim());
   if (!m) return { t: 'typedef', name: 'Record', fields: [], raw };
   const name = m[1];
+  return { t: 'typedef', name, fields: parseComponentList(m[2]), raw };
+}
+
+/** Split at top level only (not inside brackets: `array[2,3] of int` stays one piece). */
+function splitTopLevel(s: string, seps: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const c of s) {
+    if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth = Math.max(0, depth - 1);
+    if (depth === 0 && seps.includes(c)) { out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+
+/**
+ * Components of a record/struct type definition (user guide "Records / Structs"). Declarations are
+ * separated by ';' or line breaks; each one is Pascal style `a, b: type` or C style `type a, b`.
+ * A list that uses ',' between Pascal declarations (`x: int, y: int`) is accepted too: a bare name
+ * there waits for the type of the next `name: type` (so `month, day: short` keeps `month`).
+ */
+export function parseComponentList(body: string): { name: string; type: TypeInfo }[] {
   const fields: { name: string; type: TypeInfo }[] = [];
-  // Pascal style groups share one type: in "month, day: short" the bare "month" waits for the
-  // type of the next "name: type" part (it used to be dropped, which broke positional initializers)
-  let pending: string[] = [];
-  for (const part of m[2].split(/[;,]/)) {
-    const s = part.trim();
-    if (!s) continue;
-    const colon = s.indexOf(':');
-    if (colon > 0) {
-      const fNames = [...pending, ...s.slice(0, colon).split(',').map((x) => x.trim()).filter(Boolean)];
-      pending = [];
-      const ty = parseType(s.slice(colon + 1));
-      for (const fn of fNames) fields.push({ name: fn, type: ty });
-    } else if (/^\w+$/.test(s)) {
-      pending.push(s);
-    } else {
-      const words = s.split(/\s+/);
-      if (words.length >= 2) {
-        fields.push({ name: words[words.length - 1], type: parseType(words.slice(0, -1).join(' ')) });
+  for (const decl of splitTopLevel(body, ';\n')) {
+    const colons = splitTopLevel(decl, ',').filter((p) => p.includes(':')).length;
+    if (colons > 1) {
+      let pending: string[] = [];
+      for (const part of splitTopLevel(decl, ',')) {
+        const colon = part.indexOf(':');
+        if (colon > 0) {
+          const ty = parseType(part.slice(colon + 1));
+          for (const n of [...pending, part.slice(0, colon).trim()]) fields.push({ name: n, type: ty });
+          pending = [];
+        } else if (/^\w+$/.test(part)) pending.push(part);
       }
+      continue;
+    }
+    const colon = decl.indexOf(':');
+    if (colon > 0) {
+      const ty = parseType(decl.slice(colon + 1));
+      for (const n of splitTopLevel(decl.slice(0, colon), ',')) fields.push({ name: n, type: ty });
+      continue;
+    }
+    // C style: "short month, day" -> the type is everything before the first name
+    const parts = splitTopLevel(decl, ',');
+    const words = parts[0].split(/\s+/);
+    if (words.length < 2) continue;
+    const ty = parseType(words.slice(0, -1).join(' '));
+    for (const n of [words[words.length - 1], ...parts.slice(1)]) {
+      if (/^\w+$/.test(n)) fields.push({ name: n, type: ty });
     }
   }
-  return { t: 'typedef', name, fields, raw };
+  return fields;
 }
 
 /** Parse one instruction/call/jump line into a structured StmtNode with full ASTs (P2-03). */

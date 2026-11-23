@@ -5,6 +5,7 @@ import {
   createExecState, executeDiagram, parseInputString, RuntimeError,
   type ExecEvent, type ExecResult, type ExecState, type RuntimeVal,
 } from '../core/exec';
+import { walk } from '../core/model/tree';
 import { useStore } from './diagramStore';
 
 export type ExecStatus = 'idle' | 'running' | 'paused' | 'waitingInput' | 'done' | 'error';
@@ -46,8 +47,6 @@ interface ExecStoreState {
 let activeGen: Generator<ExecEvent, ExecResult, string | undefined> | null = null;
 let timerId: ReturnType<typeof setTimeout> | null = null;
 let pausedAtStep = false;
-/** Kind of the last event the generator produced (an `output` event is no step of its own). */
-let lastEvent: ExecEvent['t'] | null = null;
 /** Status before an INPUT prompt: stepping stays stepping after the value was entered. */
 let statusBeforeInput: ExecStatus = 'running';
 
@@ -62,7 +61,10 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
   const advanceOne = (inputVal?: string): boolean => {
     if (!activeGen) return false;
     try {
-      const res = inputVal !== undefined ? activeGen.next(inputVal) : activeGen.next();
+      let res = inputVal !== undefined ? activeGen.next(inputVal) : activeGen.next();
+      // An OUTPUT element yields an extra `output` event after its step. It is no step of its own:
+      // continue right away, so Step, Run (with its delay), Pause and INPUT never stop on it.
+      while (!res.done && res.value.t === 'output') res = activeGen.next();
       const st = get().execState;
       const autoOpenTurtle = st.turtle.used && !get().turtleOpen;
       if (res.done) {
@@ -79,8 +81,7 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
         }));
         return false;
       }
-      const ev = res.value;
-      lastEvent = ev.t;
+      const ev = res.value as Exclude<ExecEvent, { t: 'output' }>; // output events were consumed above
       if (ev.t === 'input') {
         clearTimer();
         statusBeforeInput = get().status === 'paused' ? 'paused' : 'running';
@@ -94,14 +95,7 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
         }));
         return false;
       }
-      if (ev.t === 'output') {
-        set((s) => ({
-          turtleOpen: s.turtleOpen || autoOpenTurtle,
-          tick: s.tick + 1,
-        }));
-        return true;
-      }
-      // ev.t === 'step'
+      // ev.t === 'step' (output events were consumed above)
       // Switch active diagram in editor if execution stepped into another diagram in the pool
       const ds = useStore.getState();
       if (ds.diagram.id !== ev.diagramId) {
@@ -138,16 +132,6 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
       }));
       return false;
     }
-  };
-
-  /**
-   * One Step: advance until the next element is reached. An OUTPUT element yields an extra
-   * `output` event after its step; without this loop the highlight stayed on the OUTPUT element
-   * and a second Step was needed.
-   */
-  const stepOnce = () => {
-    lastEvent = null;
-    while (advanceOne() && lastEvent === 'output') { /* continue to the next element */ }
   };
 
   const scheduleRun = () => {
@@ -194,7 +178,9 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
     setTurtleOpen: (turtleOpen) => set({ turtleOpen }),
     // like the desktop's "Collect Run Data": switching it off wipes the collected counts
     toggleCoverage: () => {
-      if (get().coverageOverlay) get().resetCoverage();
+      // on and off both start clean: turning it on must not show the counts of an earlier run
+      // that ran without Coverage, turning it off wipes like the desktop
+      get().resetCoverage();
       set((s) => ({ coverageOverlay: !s.coverageOverlay }));
     },
     resetCoverage: () => {
@@ -226,9 +212,12 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
       const execState = createExecState();
       if (get().coverageOverlay) {
         // run data tracking (desktop): counts add up over several runs until they are reset
+        // only for elements that still exist (closed or reloaded diagrams leave no orphan counts)
         const prev = get().execState;
-        for (const [id, c] of prev.execCounts) execState.execCounts.set(id, c);
-        for (const id of prev.covered) execState.covered.add(id);
+        const alive = new Set<string>();
+        for (const d of pool) walk(d, (el) => { alive.add(el.id); });
+        for (const [id, c] of prev.execCounts) if (alive.has(id)) execState.execCounts.set(id, c);
+        for (const id of prev.covered) if (alive.has(id)) execState.covered.add(id);
       }
       pausedAtStep = false;
       activeGen = executeDiagram(ds.diagram, { pool, args, state: execState });
@@ -245,7 +234,7 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
         tick: s.tick + 1,
       }));
       if (mode === 'step') {
-        stepOnce();
+        advanceOne();
       } else {
         if (advanceOne() && get().status === 'running') {
           scheduleRun();
@@ -262,7 +251,7 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
       if (get().status === 'waitingInput') return;
       pausedAtStep = true;
       set({ status: 'paused' });
-      stepOnce();
+      advanceOne();
     },
 
     resume: () => {
@@ -271,7 +260,9 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
         return;
       }
       if (get().status === 'waitingInput') return;
-      pausedAtStep = true;
+      // The step event of the element we paused on was already consumed, so the next event belongs
+      // to the next element: its breakpoint must hold (it used to be skipped silently).
+      pausedAtStep = false;
       set({ status: 'running' });
       scheduleRun();
     },
@@ -298,14 +289,7 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
       if (get().status !== 'waitingInput' || !activeGen) return;
       const wasRunning = statusBeforeInput === 'running';
       set({ status: wasRunning ? 'running' : 'paused', inputRequest: null });
-      lastEvent = null;
-      const more = advanceOne(value);
-      if (!wasRunning) {
-        // stepping: also finish a following output so the next element is highlighted
-        if (more && lastEvent === 'output') stepOnce();
-      } else if (more && get().status === 'running') {
-        scheduleRun();
-      }
+      if (advanceOne(value) && wasRunning && get().status === 'running') scheduleRun();
     },
 
     setWatchVar: (name, rawValue) => {

@@ -184,6 +184,9 @@ export function useMenus(): Menu[] {
         { label: t('turtleizer'), shortcut: 'Ctrl+Shift+R', checked: ex.turtleOpen, action: actions.turtleizer },
         { label: t('breakpoint'), shortcut: 'Ctrl+B', checked: !!(el && ex.breakpoints.has(el.id)), action: actions.breakpoint, disabled: !el },
         { label: t('disable'), shortcut: 'Ctrl+7', action: actions.disable, disabled: !el },
+        // desktop Executor: "Collect Run Data" and resetting it
+        { label: t('coverage'), checked: ex.coverageOverlay, action: () => ex.toggleCoverage() },
+        { label: t('coverageResetHint'), action: () => ex.resetCoverage(), disabled: !ex.coverageOverlay || ex.status === 'running' || ex.execState.execCounts.size === 0 },
       ],
     },
     {
@@ -193,6 +196,7 @@ export function useMenus(): Menu[] {
         { label: t('docs'), action: () => actions.docs('') },
         { label: t('keyBindings'), shortcut: 'Alt+F1', action: actions.keys },
         SEP,
+        { label: t('installMenu'), action: () => useStore.getState().setDialog('install') },
         { label: t('about'), shortcut: 'Shift+F1', action: actions.about },
       ],
     },

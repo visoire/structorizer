@@ -9,6 +9,7 @@ import appIcon from '../assets/app-icon.png';
 import { actions } from './actions';
 import { APP_VERSION, STRUCTORIZER_VERSION, clearLocalData } from './exporters';
 import { Modal } from './ElementEditor';
+import { InstallDialog } from './InstallTip';
 import { INSERT_KEYS, useMenus } from './MenuBar';
 import { FONT_IDS, fontStack, type FontId } from './fonts';
 
@@ -297,14 +298,58 @@ function AboutDialog() {
   );
 }
 
+// ------------------------------------------------------------------ Arrangement group (assign / rename)
+
+function GroupDialog() {
+  const s = useStore();
+  const t = useTranslator(usePrefs((p) => p.lang));
+  const g = s.groupDialog!;
+  const names = [...new Set(Object.values(s.groups))].sort((a, b) => a.localeCompare(b));
+  const current = g.mode === 'assign' ? s.groups[g.docId] ?? '' : g.group;
+  const [name, setName] = useState(current);
+  const [error, setError] = useState('');
+  const close = () => s.openGroupDialog(null);
+  const apply = (value = name) => {
+    const err = actions.checkGroupName(value, g.mode === 'rename' ? g.group : null);
+    if (err !== null) { setError(err); return; }
+    if (g.mode === 'assign') s.setDocGroup(g.docId, value);
+    else if (value.trim()) s.renameGroup(g.group, value);
+    close();
+  };
+  return (
+    <Modal title={g.mode === 'assign' ? t('groupAssign').replace(/\s*\.\.\.$/, '') : t('groupRename')}
+      onClose={close} cancelLabel={t('cancel')} okLabel={t('ok')} onOk={() => apply()}>
+      {g.mode === 'assign' && (
+        <div className="group-choices" role="radiogroup" aria-label={t('groupAssign')}>
+          <button type="button" role="radio" aria-checked={current === ''} className={'btn' + (current === '' ? ' on' : '')}
+            onClick={() => apply('')}>{t('groupNone')}</button>
+          {names.map((n) => (
+            <button key={n} type="button" role="radio" aria-checked={current === n} className={'btn' + (current === n ? ' on' : '')}
+              onClick={() => apply(n)}>{n}</button>
+          ))}
+        </div>
+      )}
+      <label className="field"><span>{g.mode === 'assign' ? t('groupNew') : t('groupRenamePrompt')}</span>
+        <input type="text" value={name} spellCheck={false} autoFocus={g.mode === 'rename'}
+          onChange={(e) => { setName(e.target.value); setError(''); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }} /></label>
+      {error && <p className="hint editor-warn" role="alert">{error}</p>}
+      {g.mode === 'assign' && <p className="hint small">{t('groupPrompt')}</p>}
+    </Modal>
+  );
+}
+
 export function Dialogs() {
   const dialog = useStore((s) => s.dialog);
+  const groupDialog = useStore((s) => s.groupDialog);
+  if (groupDialog) return <GroupDialog key={JSON.stringify(groupDialog)} />;
   switch (dialog) {
     case 'prefs': return <PrefsDialog />;
     case 'find': return <FindDialog />;
     case 'pngMulti': return <PngMultiDialog />;
     case 'keys': return <KeysDialog />;
     case 'about': return <AboutDialog />;
+    case 'install': return <InstallDialog />;
     default: return null;
   }
 }

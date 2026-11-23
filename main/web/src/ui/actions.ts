@@ -19,6 +19,8 @@ const st = () => useStore.getState();
 const t = () => translator(usePrefs.getState().lang);
 const notify = (text: string, kind: 'info' | 'success' | 'error' = 'info') => st().notify(text, kind);
 const pool = () => st().allDocs().map((x) => x.diagram);
+/** A name usable as download and ZIP entry name. */
+export const safeFileName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').replace(/^\.+/, '').trim() || 'arrangement';
 
 /** Document key for file handles: stable per open document. */
 const docKey = new Map<string, object>();
@@ -64,10 +66,13 @@ export const actions = {
           const entries = await readArrFile(file);
           const all = st().allDocs();
           let matched = 0;
+          const group = file.name.replace(/\.arr$/i, '');
           for (const entry of entries) {
             const doc = all.find((d) => (d.fileName ?? '').toLowerCase() === entry.fileName.toLowerCase());
             if (doc) {
               st().moveDocCard(doc.id, entry.x, entry.y);
+              // the matched diagrams form a group named after the arrangement, like an .arrz
+              st().setDocGroup(doc.id, group);
               matched++;
             }
           }
@@ -99,24 +104,28 @@ export const actions = {
     const s = st();
     const docs = s.allDocs().filter((d) => s.groups[d.id] === group);
     if (docs.length === 0) return;
-    exportArrzFile(docs, group);
-    notify(`${t()('exported')}: ${group}.arrz`, 'success');
+    // a group name is not a file name: no path separators or characters Windows refuses
+    const file = safeFileName(group);
+    exportArrzFile(docs, file);
+    notify(`${t()('exported')}: ${file}.arrz`, 'success');
   },
 
-  /** Puts a diagram into a group (new or existing name); an empty name takes it out again. */
-  moveToGroup: (id: string) => {
-    const s = st();
-    const names = [...new Set(Object.values(s.groups))].sort();
-    const current = s.groups[id] ?? '';
-    const hint = names.length ? `\n(${names.join(', ')})` : '';
-    const name = window.prompt(`${t()('groupPrompt')}${hint}`, current);
-    if (name === null) return;
-    s.setDocGroup(id, name);
-  },
+  /** Opens the group dialog for a diagram: pick an existing group, type a new one or none. */
+  moveToGroup: (id: string) => st().openGroupDialog({ mode: 'assign', docId: id }),
 
-  renameGroup: (group: string) => {
-    const name = window.prompt(t()('groupRenamePrompt'), group);
-    if (name !== null) st().renameGroup(group, name);
+  renameGroup: (group: string) => st().openGroupDialog({ mode: 'rename', group }),
+
+  /**
+   * Checks a group name from the dialog. Returns an error text, or null when it can be used.
+   * The name of the default group is reserved; an existing name merges only after a question.
+   */
+  checkGroupName: (name: string, current: string | null): string | null => {
+    const n = name.trim();
+    if (!n) return null;
+    if (n.toLowerCase() === t()('groupDefault').toLowerCase()) return t()('groupNameReserved');
+    const exists = Object.values(st().groups).includes(n);
+    if (current !== null && exists && n !== current && !window.confirm(`${t()('groupMergeConfirm')} "${n}"`)) return '';
+    return null;
   },
 
   dissolveGroup: (group: string) => {

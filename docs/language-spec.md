@@ -65,7 +65,8 @@ Each logical line in an `Instruction`, `Call`, or `Jump` element parses into a `
    - **Pascal style**: `var a, b: int`, `var x: double <- 1.5`, `const PI <- 3.14159`, `const MAX: int <- 100`.
    - **BASIC style**: `dim a as int`, `dim names as array of string <- {"Ada", "Bob"}`.
    - **C / Java style**: `int x <- 5`, `double[] arr <- {1.0, 2.0}`, `int i, j <- 0`.
-   - **Type definitions**: `type Point = record { x: double; y: double }`.
+   - **Type definitions**: `type Point = record { x: double; y: double }`. Components in Pascal style (`month, day: short`) or C style (`struct { int year; short month, day }`), separated by `;` or line breaks; one definition may span several lines of an instruction.
+- **Record initializers**: `Date{year: 2026, month: 11, day: 23}`, the C form `Date{.year = 2026}` and the "smart" form `Date{2026, 11, 23}` (values fill the components in declaration order; after the first named component further unnamed values are ignored and not evaluated). `x = 5` inside braces is a comparison, never a component name. A declared record variable (`var d: Date`) accepts `d <- {2026, 11, 23}`. Unknown types or components are runtime errors; component values are converted to the declared type.
 4. **Assignment**: `target <- expr` or `target := expr` (also `target += expr`, `-=`, `*=`, `/=`, `target++`, `target--`).
    - `target` is an identifier `x`, indexed lvalue `a[i][j]`, or record field `p.x`.
 5. **Routine Call**: `name(arg1, arg2, ...)`

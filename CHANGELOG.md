@@ -10,6 +10,82 @@ build number. Desktop issue numbers refer to
 
 ## [Unreleased]
 
+## [3.32.35-web.11] – 2026-11-23 (corresponds to Structorizer 3.32-35)
+
+Second pass over the maintainer's 7 points after a detailed code review of web.10, plus an iPad
+Home Screen guide. Regression tests: `main/web/tests/review-fixes.test.ts` (15 tests).
+
+### Fixed
+- **Root comment (point 1)**: the diagram frame now has the grey comment mark like every element
+  (desktop `Root.draw`; inset for subroutines, below the bevel for includables), and the status bar
+  shows the frame's comment when the frame is selected. A comment of only blank lines no longer
+  replaces the title or reserves space. Comments are no longer changed by "C operators" or coloured
+  by variable highlighting (neither above the text nor when switched), and their width is measured
+  as drawn. The bevel of an includable is 15 px boxed / 10 px unboxed like the desktop (was 20 px).
+- **Comment pop-up (point 2)**: it opens where the pointer rests (it used to jump to the entry
+  point), stays inside the window (flips left/up at the edges), sits below menus, context menu and
+  dialogs, does not open while one of them is open, and closes on scrolling, zooming, edits and mode
+  changes (no timer left running). With "Switch text/comments?" it shows the hidden text instead.
+- **Stepping and running past OUTPUT (point 3)**: an OUTPUT element no longer counts as an extra
+  step anywhere: Run at a set speed no longer lingers twice as long on it, and Pause or an INPUT
+  right after it can no longer stop on it. **Resume no longer skips a breakpoint** on the element
+  that follows the one execution paused on.
+- **Records (point 4)**:
+  - Code preview and export translate `Date{2026, 11, 23}` (it became `Date[2026, 11, 23]` or
+    `Datenew int[]{...}`): Python dict, JavaScript object, PHP array, `new Date(...)` (Java),
+    `new Date { year = ... }` (C#), `(Date){.year = ...}` (C), `Date{...}` (C++), Pascal record
+    constant, Bash associative array; components come from the type definition. The variable is
+    declared with the record type (`Date today`) instead of `double`. The unused AST translator
+    `translateAst` was removed.
+  - `Flags{x = 5, 10}`: `x = 5` is a comparison, not a component name (only `name:` and the C form
+    `.name =` name a component, like the desktop).
+  - Type definitions: C style lists (`struct{int year; short month, day}`), commas inside brackets
+    (`array[2,3] of int`) and definitions over several lines of one instruction now work.
+  - Executor: unknown record type or component is a runtime error (like the desktop), component
+    values are converted to their declared type (`2026.9` becomes `2026` for `int`), values that are
+    ignored after a named component are not evaluated, `var d: Date` gets the components and
+    `d <- {2026, 11, 23}` fills them, and the variable list shows the type `Date` instead of `record`.
+- **Execution counts (point 5)**: the FOR head counts every pass like WHILE (it always showed 1×);
+  the REPEAT count sits at its condition at the bottom (it covered the count of the first element);
+  switching Coverage on starts at zero; counts of closed or replaced diagrams are dropped; the Debug
+  menu has "Coverage" and "Reset the execution counters" entries.
+- **Zoomed out (point 6)**: the outer frame is no longer clipped by the picture edge, comment marks
+  and the hatching of disabled elements keep about one device pixel, crisp edges are used only for
+  straight lines and boxes (IF/CASE diagonals and rounded corners are smooth), and a zoom of 0 is
+  safe.
+- **Arrangement groups (point 7)**: the group name stays visible above the cards (an `.arrz` that
+  starts at the top is moved down a little), "Auto-layout grid" lays out every group in its own block,
+  positions and pins survive a reload, an `.arr` file forms a group too, the new group dialog
+  replaces the browser prompt (existing groups to pick, a field for a new name, no group), a name
+  that exists already asks before merging, the default group's name is refused, the collapsed state
+  survives a rename, "Outsource" keeps the new subroutine in the caller's group, group names are
+  made safe for file names, the board measures the frames only when something changed, and the row
+  buttons are always visible on touch screens. New "Group ..." button in the Arranger index.
+
+### Added
+- **iPad: Add to Home Screen guide.** In a Safari tab on an iPad (or iPhone) a short dialog explains
+  why Structorizer runs better from the Home Screen (full screen, offline, no Safari gestures in the
+  way) and how: Share, "Add to Home Screen", Add. It also says that the Home Screen app has its own
+  storage. "Not now" asks again after two weeks, "Do not show again" never; it is never shown in the
+  Home Screen app itself or for the single-file edition. Always available under Help > "Add to Home
+  Screen (iPad) ...". Rules in `ui/installTipRules.ts` (tested), dialog in `ui/InstallTip.tsx`.
+- The app asks the browser to keep its storage (`navigator.storage.persist()`), so Safari does not
+  clear the autosaved diagrams of a Home Screen app.
+- 16 new UI strings in all 13 languages.
+
+### Documentation
+- `ROADMAP.md` checked against web.11: file drop, groups basics, smart records, comment pop-ups and
+  the Home Screen guide moved to "already there"; new open items: record type declarations in code
+  export, "Comments plus texts" for CASE/FOREVER/PARALLEL/TRY, a test pass on a real iPad.
+- `README.md` feature list, `docs/language-spec.md` (type definitions, record initializers),
+  `docs/executor-spec.md` (run data, OUTPUT and stepping), `docs/ipados-native-guide.md` (Home
+  Screen guide, separate storage) and the in-app documentation updated.
+
+### Not changed
+- "Comments plus texts" for CASE, FOREVER, PARALLEL and TRY headers (review note 1.5) is left for a
+  later release: it needs new header layouts for these elements.
+- MCP server/CLI: no code change; rebuilt with the shared core, 13/13 checks.
+
 ## [3.32.35-web.10] – 2026-11-23 (corresponds to Structorizer 3.32-35)
 
 Fixes for the first feedback of the Structorizer Desktop maintainer (7 points, e-mail of

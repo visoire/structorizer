@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatValue, parseInputString, turtleBounds, turtleToSvg, typeNameOf, type RuntimeVal } from '../core/exec';
 import { parseSignature } from '../core/lang/analyze';
+import { findById } from '../core/model';
 import { useTranslator } from '../i18n';
 import { useStore } from '../store/diagramStore';
 import { useExecStore } from '../store/execStore';
@@ -74,6 +75,8 @@ export function ExecutorPanel({ placement }: { placement?: 'vertical' | 'horizon
   };
 
   const selElId = selection?.t === 'el' ? selection.id : undefined;
+  // counts of the diagram on screen (not of a closed or replaced one)
+  const hasCounts = [...ex.execState.execCounts.keys()].some((id) => findById(diagram, id));
   const hasBp = selElId ? ex.breakpoints.has(selElId) : false;
 
   const styleObj = isSide
@@ -194,7 +197,7 @@ export function ExecutorPanel({ placement }: { placement?: 'vertical' | 'horizon
               <button
                 type="button"
                 className="btn small"
-                disabled={ex.status === 'running' || ex.execState.execCounts.size === 0}
+                disabled={ex.status === 'running' || !hasCounts}
                 title={t('coverageResetHint')}
                 onClick={ex.resetCoverage}
               >

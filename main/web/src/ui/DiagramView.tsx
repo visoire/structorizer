@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createLayoutEngine, dropGap, hitBranchHead, hitTest, type Gap, type Hit, type Scene } from '../core/layout';
 import { analyseDiagram, parseSignature } from '../core/lang';
-import { DEFAULT_COLORS, findById, type ElementKind } from '../core/model';
+import { DEFAULT_COLORS, findById, type Diagram, type ElementKind } from '../core/model';
 import { isInside, sameRef } from '../core/model/tree';
 import { sceneToSvg } from '../core/render/svg';
 import { selectedIds, useStore, type Selection } from '../store/diagramStore';
@@ -30,6 +30,30 @@ interface PressState {
   cancelled: boolean;
   /** moved after the drag started (otherwise a long press opens the context menu) */
   movedInDrag?: boolean;
+}
+
+/**
+ * Lines of the hover pop-up (desktop Diagram tooltip): the comment of the element or frame under the
+ * pointer while "Show comments?" is on. With "Switch text/comments?" the box already shows the
+ * comment, so the pop-up shows the hidden text instead.
+ */
+export function commentTipLines(h: Hit | null, d: Diagram, showComments: boolean, switched: boolean): string[] {
+  if (!showComments || !h || h.t === 'seq') return [];
+  const comment = h.t === 'el' ? h.comment : d.comment;
+  const clean = (ls: string[]) => ls.map((c) => c.trimEnd()).filter((c) => c.trim() !== '');
+  if (clean(comment).length === 0) return [];
+  if (!switched) return clean(comment);
+  const text = h.t === 'el' ? findById(d, h.id)?.el.text ?? [] : d.text;
+  return clean(text);
+}
+
+const versions = new WeakMap<Diagram, number>();
+let versionSeq = 0;
+/** A number per diagram object (diagrams are immutable: an edit makes a new object). */
+function diagramVersion(d: Diagram): number {
+  let v = versions.get(d);
+  if (v === undefined) { v = ++versionSeq; versions.set(d, v); }
+  return v;
 }
 
 function selectionOf(hit: Hit | null): Selection {
@@ -218,24 +242,48 @@ export function DiagramView() {
   const [commentTip, setCommentTip] = useState<{ key: string; x: number; y: number; lines: string[] } | null>(null);
   const tipTimer = useRef<number | null>(null);
   const tipKey = useRef<string | null>(null);
+  /** last pointer position: the pop-up opens where the pointer rests, not where it entered */
+  const tipPos = useRef({ x: 0, y: 0 });
+  const tipRef = useRef<HTMLDivElement>(null);
   const hideCommentTip = () => {
     if (tipTimer.current) { clearTimeout(tipTimer.current); tipTimer.current = null; }
     tipKey.current = null;
     setCommentTip(null);
   };
   const updateCommentTip = (h: Hit | null, x: number, y: number) => {
-    const lines = !prefs.showComments || !h || h.t === 'seq' ? []
-      : (h.t === 'el' ? h.comment : diagram.comment).map((c) => c.trimEnd()).filter((c) => c.trim() !== '');
+    tipPos.current = { x, y };
+    const st = useStore.getState();
+    const busy = !!(st.contextMenu || st.dialog || st.groupDialog || st.editor || st.quickDish);
+    const lines = busy ? [] : commentTipLines(h, diagram, prefs.showComments, prefs.switchTextComments && !prefs.commentsPlusText);
     const key = lines.length === 0 || !h ? null : h.t === 'el' ? h.id : 'root';
     if (key !== tipKey.current) {
       hideCommentTip();
       if (!key) return;
       tipKey.current = key;
-      tipTimer.current = window.setTimeout(() => setCommentTip({ key, x, y, lines }), 450);
+      tipTimer.current = window.setTimeout(() => {
+        tipTimer.current = null;
+        setCommentTip({ key, ...tipPos.current, lines });
+      }, 450);
       return;
     }
     if (key) setCommentTip((tip) => (tip ? { ...tip, x, y } : tip));
   };
+  // close it when the content or the view changes, and never leave a timer running
+  useEffect(() => hideCommentTip, []);
+  useEffect(() => { hideCommentTip(); }, [prefs.showComments, prefs.switchTextComments, prefs.commentsPlusText, diagram, viewMode, zoom]);
+  // keep it inside the window: flip to the left / above the pointer near the edges
+  useLayoutEffect(() => {
+    const el = tipRef.current;
+    if (!el || !commentTip) return;
+    const M = 8, OX = 12, OY = 18;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let left = commentTip.x + OX;
+    let top = commentTip.y + OY;
+    if (left + w + M > window.innerWidth) left = Math.max(M, commentTip.x - OX - w);
+    if (top + h + M > window.innerHeight) top = Math.max(M, commentTip.y - OY / 2 - h);
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+  }, [commentTip]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     hideCommentTip();
@@ -451,7 +499,7 @@ export function DiagramView() {
           <g key={'cov-' + h.id}>
             <rect x={h.head.x + 1} y={h.head.y + 1} width={Math.max(0, h.head.w - 1)} height={Math.max(0, h.head.h - 1)} className="cov-fill" />
             {count > 0 && (
-              <text x={h.x + h.w - 4} y={h.y + 12} textAnchor="end" className="cov-count">{count}×</text>
+              <text x={h.x + h.w - 4} y={h.head.y + 12} textAnchor="end" className="cov-count">{count}×</text>
             )}
           </g>
         );
@@ -554,7 +602,8 @@ export function DiagramView() {
         if (!pn.moved && e.target === scrollRef.current) useStore.getState().select(null);
       }}
       onPointerCancel={() => { pan.current = null; setPanning(false); }}
-      onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }}>
+      onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }}
+      onScroll={() => { if (tipKey.current) hideCommentTip(); }}>
       <div
         className={'diagram-host' + (dragId ? ' dragging' : '')}
         ref={hostRef}
@@ -590,7 +639,7 @@ export function DiagramView() {
       </div>
       {quickDish && <QuickDish point={quickDish} />}
       {commentTip && !dragId && (
-        <div className="comment-tip" role="tooltip" style={{ left: commentTip.x, top: commentTip.y }}>
+        <div className="comment-tip" role="tooltip" ref={tipRef} style={{ left: commentTip.x + 12, top: commentTip.y + 18 }}>
           {commentTip.lines.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
@@ -677,6 +726,8 @@ function ArrangerBoard({ engine, dark }: { engine: ReturnType<typeof createLayou
 
   // one frame per arrangement group around its cards (desktop Group.draw), measured after layout
   const canvasRef = useRef<HTMLDivElement>(null);
+  // measure again only when a card moves, changes its group or its diagram (not on every render)
+  const layoutKey = docs.map((d) => `${d.id}:${d.x}:${d.y}:${s.groups[d.id] ?? ''}:${diagramVersion(d.diagram)}`).join('|');
   const [frames, setFrames] = useState<{ name: string; x: number; y: number; w: number; h: number }[]>([]);
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -695,7 +746,7 @@ function ArrangerBoard({ engine, dark }: { engine: ReturnType<typeof createLayou
       return { name, x, y, w: b.x1 + PAD - x, h: b.y1 + PAD - y };
     });
     setFrames((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
-  });
+  }, [layoutKey, dark]);
 
   return (
     <div

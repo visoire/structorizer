@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // AST and token-assisted translation of Structorizer expressions into target languages (P2-10).
 import { tokenize, type Tok } from '../lang/lexer';
-import { parseExpr, type Expr } from '../lang/parser';
+import { parseExpr } from '../lang/parser';
 
 export type LangId = 'python' | 'java' | 'javascript' | 'c' | 'cpp' | 'csharp' | 'pascal' | 'php' | 'bash';
 
@@ -10,6 +10,58 @@ export interface ExprCtx {
   imports: Set<string>;
   /** element type hint for Java / C# array literals */
   arrayType?: string;
+  /** record/struct types seen so far (lower-case name -> declared name and component order) */
+  records?: Map<string, { name: string; fields: string[] }>;
+}
+
+/**
+ * Record initializer `Date{2026, month: 11, day: 23}` in the target language. Unnamed ("smart")
+ * values take the components in declaration order; after the first named component further
+ * unnamed values are dropped (desktop rule). Without a known type definition the values keep
+ * their order.
+ */
+function translateRecord(typeName: string, inner: Tok[], ctx: ExprCtx): string {
+  const L = ctx.lang;
+  const def = ctx.records?.get(typeName.toLowerCase());
+  const tn = def?.name ?? typeName;
+  const entries: { name: string | null; value: string }[] = [];
+  let named = false;
+  let idx = 0;
+  for (const item of splitArgs(inner)) {
+    const nw = item.filter((t) => t.k !== 'ws');
+    if (nw.length === 0) continue;
+    let nameTok: string | null = null;
+    let valToks = item;
+    if (nw[0].k === 'id' && nw[1]?.v === ':') {
+      nameTok = nw[0].v;
+      valToks = item.slice(item.indexOf(nw[1]) + 1);
+    } else if (nw[0].v === '.' && nw[1]?.k === 'id' && (nw[2]?.v === '=' || nw[2]?.v === ':')) {
+      nameTok = nw[1].v;
+      valToks = item.slice(item.indexOf(nw[2]) + 1);
+    }
+    const value = translateToks(valToks, ctx).trim();
+    if (nameTok) { named = true; entries.push({ name: nameTok, value }); continue; }
+    if (named) continue;
+    entries.push({ name: def?.fields[idx] ?? null, value });
+    idx++;
+  }
+  const allNamed = entries.every((e) => e.name !== null);
+  // positional order of the type definition where it is known
+  const ordered = def && allNamed
+    ? [...entries].sort((a, b) => def.fields.indexOf(a.name!) - def.fields.indexOf(b.name!))
+    : entries;
+  const vals = ordered.map((e) => e.value).join(', ');
+  switch (L) {
+    case 'python': return allNamed ? `{${entries.map((e) => `"${e.name}": ${e.value}`).join(', ')}}` : `${tn}(${vals})`;
+    case 'javascript': return allNamed ? `{${entries.map((e) => `${e.name}: ${e.value}`).join(', ')}}` : `[${vals}]`;
+    case 'php': return allNamed ? `[${entries.map((e) => `"${e.name}" => ${e.value}`).join(', ')}]` : `[${vals}]`;
+    case 'java': return `new ${tn}(${vals})`;
+    case 'csharp': return allNamed ? `new ${tn} { ${entries.map((e) => `${e.name} = ${e.value}`).join(', ')} }` : `new ${tn}(${vals})`;
+    case 'c': return allNamed ? `(${tn}){${entries.map((e) => `.${e.name} = ${e.value}`).join(', ')}}` : `(${tn}){${vals}}`;
+    case 'cpp': return `${tn}{${vals}}`;
+    case 'pascal': return allNamed ? `(${entries.map((e) => `${e.name}: ${e.value}`).join('; ')})` : `(${vals})`;
+    case 'bash': return allNamed ? `(${entries.map((e) => `[${e.name}]=${e.value}`).join(' ')})` : `(${ordered.map((e) => e.value).join(' ')})`;
+  }
 }
 
 type Tpl = (a: string[]) => string;
@@ -154,6 +206,13 @@ function translateToks(toks: Tok[], ctx: ExprCtx): string {
     if (t.k === 'id') {
       const low = v.toLowerCase();
       const ni = nextNonWs(toks, i);
+      if (toks[ni]?.v === '{' && toks[ni].k === 'punct') {
+        // record initializer Type{...}
+        const close = matching(toks, ni);
+        out += translateRecord(v, toks.slice(ni + 1, close), ctx);
+        i = close;
+        continue;
+      }
       const isCall = toks[ni]?.v === '(';
       if (isCall) {
         const close = matching(toks, ni);
@@ -240,59 +299,6 @@ function guessArrayType(toks: Tok[], lang: 'java' | 'csharp' = 'java'): string {
   return lang === 'csharp' ? 'object' : 'Object';
 }
 
-/** Translate a parsed AST expression node into `ctx.lang` (P2-10). */
-export function translateAst(node: Expr, ctx: ExprCtx): string {
-  const L = ctx.lang;
-  switch (node.t) {
-    case 'num': return node.raw;
-    case 'bool': return L === 'python' ? (node.v ? 'True' : 'False') : L === 'bash' ? (node.v ? '1' : '0') : String(node.v);
-    case 'null': return L === 'python' ? 'None' : L === 'pascal' ? 'nil' : 'null';
-    case 'str': return translateToks([{ k: 'str', v: node.raw }], ctx);
-    case 'id': return translateToks([{ k: 'id', v: node.name }], ctx);
-    case 'unary': {
-      const arg = translateAst(node.arg, ctx);
-      const wrap = node.arg.t === 'binary' ? `(${arg})` : arg;
-      if (node.op === 'not' || node.op === '!') {
-        return L === 'python' || L === 'pascal' ? `not ${wrap}` : `!${wrap}`;
-      }
-      return `${node.op}${wrap}`;
-    }
-    case 'binary': {
-      const l = translateAst(node.left, ctx);
-      const r = translateAst(node.right, ctx);
-      const op = translateToks([{ k: WORD_OP_SET.has(node.op) ? 'id' : 'op', v: node.op }], ctx).trim();
-      return `${l} ${op} ${r}`;
-    }
-    case 'call': {
-      const args = node.args.map((a) => translateAst(a, ctx));
-      const low = node.name.toLowerCase();
-      const b = BUILTINS[low];
-      if (b) {
-        const imp = IMPORTS[L]?.[low];
-        if (imp) ctx.imports.add(imp);
-        return b[L](args);
-      }
-      return `${node.name}(${args.join(', ')})`;
-    }
-    case 'index': return `${translateAst(node.target, ctx)}[${translateAst(node.index, ctx)}]`;
-    case 'member': return `${translateAst(node.target, ctx)}.${node.field}`;
-    case 'array': {
-      const items = node.items.map((a) => translateAst(a, ctx));
-      if (L === 'java' || L === 'csharp') return `new ${ctx.arrayType ?? 'int'}[]{${items.join(', ')}}`;
-      if (L === 'cpp' || L === 'c') return `{${items.join(', ')}}`;
-      if (L === 'pascal') return `(${items.join(', ')})`;
-      if (L === 'bash') return `(${items.join(' ')})`;
-      return `[${items.join(', ')}]`;
-    }
-    case 'record': {
-      // positional ("smart") items have no component name: keep them as plain values
-      const entries = node.fields.map((f) => (f.name ? `${JSON.stringify(f.name)}: ` : '') + translateAst(f.value, ctx));
-      return `{${entries.join(', ')}}`;
-    }
-  }
-}
-
-const WORD_OP_SET = new Set(['and', 'or', 'not', 'xor', 'div', 'mod', 'shl', 'shr']);
 
 /** Translate one expression of the Structorizer language into `ctx.lang`. */
 export function translateExpr(expr: string, ctx: ExprCtx): string {

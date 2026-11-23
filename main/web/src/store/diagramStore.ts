@@ -22,7 +22,7 @@ export interface DocSlot {
   pinned?: boolean;
 }
 
-export type DialogName = 'prefs' | 'find' | 'about' | 'keys' | 'pngMulti' | null;
+export type DialogName = 'prefs' | 'find' | 'about' | 'keys' | 'pngMulti' | 'install' | null;
 export type ViewMode = 'editor' | 'arranger';
 
 export type Selection =
@@ -105,9 +105,15 @@ interface State {
   togglePinDoc: (id: string) => void;
   autoLayoutDocs: () => void;
   allDocs: () => (DocSlot & { active: boolean; dirty: boolean })[];
-  restoreSession: (docs: { diagram: Diagram; fileName: string | null; group?: string }[], active: number) => void;
+  restoreSession: (docs: { diagram: Diagram; fileName: string | null; group?: string; x?: number; y?: number; pinned?: boolean }[], active: number) => void;
   // arrangement groups (desktop Arranger groups, basic): doc id -> group name, no entry = default group
   groups: Record<string, string>;
+  /** collapsed groups in the Arranger index (kept here so a rename keeps it) */
+  groupCollapsed: Record<string, boolean>;
+  toggleGroupCollapsed: (name: string) => void;
+  /** the small group dialog: put a diagram into a group, or rename a group */
+  groupDialog: { mode: 'assign'; docId: string } | { mode: 'rename'; group: string } | null;
+  openGroupDialog: (d: State['groupDialog']) => void;
   setDocGroup: (id: string, group: string | null) => void;
   renameGroup: (from: string, to: string) => void;
   dissolveGroup: (name: string) => void;
@@ -154,6 +160,8 @@ export const useStore = create<State>((set, get) => ({
   viewMode: 'editor',
   docs: [],
   groups: {},
+  groupCollapsed: {},
+  groupDialog: null,
   dialog: null,
   contextMenu: null,
   quickDish: null,
@@ -448,8 +456,11 @@ export const useStore = create<State>((set, get) => ({
   },
 
   openArrz: (entries, group) => {
+    // room for the group label above the cards (desktop arrangements often start at y = 10)
+    const minY = Math.min(...entries.map((e) => e.y));
+    const dy = group && minY < 40 ? 40 - minY : 0;
     for (const entry of entries) {
-      get().openDoc(entry.diagram, entry.fileName, { x: entry.x, y: entry.y });
+      get().openDoc(entry.diagram, entry.fileName, { x: entry.x, y: entry.y + dy });
       if (group) get().setDocGroup(get().activeId, group);
     }
     if (entries.length > 1) {
@@ -553,10 +564,18 @@ export const useStore = create<State>((set, get) => ({
 
   autoLayoutDocs: () => {
     const s = get();
-    const all = s.allDocs();
-    all.forEach((doc, idx) => {
-      const x = 32 + (idx % 3) * 340;
-      const y = 32 + Math.floor(idx / 3) * 280;
+    // one block of rows per group (named groups first, then the default group), so the frame of a
+    // group does not stretch over the cards of other groups
+    const names = [...new Set(Object.values(s.groups))].sort((a, b) => a.localeCompare(b));
+    const blocks = [...names.map((g) => s.allDocs().filter((d) => s.groups[d.id] === g)), s.allDocs().filter((d) => !s.groups[d.id])]
+      .filter((b) => b.length > 0);
+    const placed: { doc: ReturnType<State['allDocs']>[number]; x: number; y: number }[] = [];
+    let top = 48;
+    for (const block of blocks) {
+      block.forEach((doc, idx) => placed.push({ doc, x: 32 + (idx % 3) * 340, y: top + Math.floor(idx / 3) * 280 }));
+      top += Math.ceil(block.length / 3) * 280 + 48;
+    }
+    placed.forEach(({ doc, x, y }) => {
       if (doc.id === s.activeId) {
         if (!s.activePinned) set({ activeX: x, activeY: y });
       } else {
@@ -603,8 +622,9 @@ export const useStore = create<State>((set, get) => ({
     set({
       diagram: a.diagram, savedDiagram: a.diagram, fileName: a.fileName, past: [], future: [], selection: null,
       activeId: ids[docs.indexOf(a)],
+      activeX: a.x ?? 32, activeY: a.y ?? 32, activePinned: !!a.pinned,
       docs: docs.map((x, i) => ({ x, id: ids[i] })).filter(({ x }) => x !== a)
-        .map(({ x, id }) => ({ id, diagram: x.diagram, savedDiagram: x.diagram, fileName: x.fileName, past: [], future: [] })),
+        .map(({ x, id }) => ({ id, diagram: x.diagram, savedDiagram: x.diagram, fileName: x.fileName, past: [], future: [], x: x.x, y: x.y, pinned: x.pinned })),
       groups,
     });
   },
@@ -621,8 +641,16 @@ export const useStore = create<State>((set, get) => ({
   renameGroup: (from, to) => {
     const name = to.trim();
     if (!name || name === from) return;
-    set((s) => ({ groups: Object.fromEntries(Object.entries(s.groups).map(([id, g]) => [id, g === from ? name : g])) }));
+    set((s) => {
+      const groupCollapsed = { ...s.groupCollapsed };
+      if (from in groupCollapsed) { groupCollapsed[name] = groupCollapsed[from]; delete groupCollapsed[from]; }
+      return { groups: Object.fromEntries(Object.entries(s.groups).map(([id, g]) => [id, g === from ? name : g])), groupCollapsed };
+    });
   },
+
+  openGroupDialog: (groupDialog) => set({ groupDialog, contextMenu: null, quickDish: null }),
+
+  toggleGroupCollapsed: (name) => set((s) => ({ groupCollapsed: { ...s.groupCollapsed, [name]: !s.groupCollapsed[name] } })),
 
   dissolveGroup: (name) => {
     set((s) => ({ groups: Object.fromEntries(Object.entries(s.groups).filter(([, g]) => g !== name)) }));
@@ -710,7 +738,10 @@ export const useStore = create<State>((set, get) => ({
     get().commit(replaced, { t: 'el', id: call.id });
     // the new subroutine opens next to the current diagram, which stays active
     const s = get();
-    set({ docs: [...s.docs, { id: newId(), diagram: sub, savedDiagram: null, fileName: null, past: [], future: [] }] });
+    const subId = newId();
+    set({ docs: [...s.docs, { id: subId, diagram: sub, savedDiagram: null, fileName: null, past: [], future: [] }] });
+    // the subroutine joins the group of its caller (desktop: same arrangement)
+    if (s.groups[s.activeId]) get().setDocGroup(subId, s.groups[s.activeId]);
     return true;
   },
 

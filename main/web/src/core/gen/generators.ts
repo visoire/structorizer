@@ -8,6 +8,8 @@ import {
   caseInfo, calledRoutine, classifyJump, classifyLine, conditionOf, forInfo, parseSignature, parseType,
   resultVariable, type BaseType, type CaseInfo, type ForInfo, type Signature, type Stmt, type TypeInfo,
 } from '../lang/analyze';
+import { joinContinuedLines } from '../lang/lexer';
+import { parseComponentList } from '../lang/parser';
 import { literalType, translateExpr, type ExprCtx, type LangId } from './expr';
 
 export type { LangId } from './expr';
@@ -38,23 +40,21 @@ const VERSION = '3.32-35';
 
 // ------------------------------------------------------------------ helpers
 
-type VarType = { base: BaseType; array: boolean };
+/** `name`: a record type (`Date`) when base is unknown */
+type VarType = { base: BaseType; array: boolean; name?: string };
 
 function plainIdent(s: string): string | null {
   const t = s.trim();
   return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(t) ? t : null;
 }
 
-function joinLines(text: string[]): string[] {
-  // honour line continuation (trailing backslash)
-  const out: string[] = [];
-  let buf = '';
-  for (const l of text) {
-    if (l.trimEnd().endsWith('\\')) buf += l.trimEnd().slice(0, -1) + ' ';
-    else { out.push(buf + l); buf = ''; }
-  }
-  if (buf) out.push(buf);
-  return out;
+// honour line continuation (trailing backslash) and multi-line type definitions, like the executor
+const joinLines = joinContinuedLines;
+
+/** Type of a record initializer `Date{...}`: the record type itself. */
+function recordInitType(expr: string): VarType | null {
+  const m = /^\s*([A-Za-z_]\w*)\s*\{/.exec(expr);
+  return m ? { base: 'unknown', array: false, name: m[1] } : null;
 }
 
 function litToType(l: ReturnType<typeof literalType>): VarType | null {
@@ -85,8 +85,8 @@ export function collectVariables(d: Diagram, exclude: Set<string>): Map<string, 
       const s = classifyLine(line, d.keywords);
       if (s.t === 'assign') {
         const name = plainIdent(s.target);
-        if (s.decl) note(name, s.decl.base === 'unknown' && !s.decl.array ? litToType(literalType(s.expr)) : s.decl, true);
-        else note(name, litToType(literalType(s.expr)));
+        if (s.decl) note(name, s.decl.base === 'unknown' && !s.decl.array && !s.decl.name ? recordInitType(s.expr) ?? litToType(literalType(s.expr)) : s.decl, true);
+        else note(name, recordInitType(s.expr) ?? litToType(literalType(s.expr)));
       } else if (s.t === 'decl') for (const n of s.names) note(plainIdent(n), s.type, true);
       else if (s.t === 'input') for (const t of s.targets) note(plainIdent(t), null);
     }
@@ -133,8 +133,17 @@ abstract class Gen {
   protected line(s = ''): void {
     this.lines.push({ s: s === '' ? '' : this.indentUnit.repeat(this.level) + s, ids: [...this.ids] });
   }
-  protected comment(s: string): void { this.line(s.trim() === '' ? this.cmt.trimEnd() : `${this.cmt}${s}`); }
+  protected comment(s: string): void {
+    // a multi-line type definition becomes one comment line per source line
+    for (const l of s.split('\n')) this.line(l.trim() === '' ? this.cmt.trimEnd() : `${this.cmt}${l}`);
+  }
   protected ex(e: string): string { return translateExpr(e, this.ctx); }
+  /** Remember the components of 	ype X = record{...} so X{...} initializers can be translated. */
+  protected learnRecordType(line: string): void {
+    const m = /^\s*type\s+(\w+)\s*=\s*(?:record|struct)\s*\{([^}]*)\}?/i.exec(line);
+    if (!m) return;
+    (this.ctx.records ??= new Map()).set(m[1].toLowerCase(), { name: m[1], fields: parseComponentList(m[2]).map((f) => f.name) });
+  }
   protected cond(lines: string[], pre: string, post: string): string { return this.ex(conditionOf(lines, pre, post, this.k)); }
 
   protected block(seq: Element[]): void {
@@ -152,7 +161,10 @@ abstract class Gen {
     switch (el.kind) {
       case 'instruction':
       case 'call':
-        for (const l of joinLines(el.text)) this.stmt(classifyLine(l, this.k));
+        for (const l of joinLines(el.text)) {
+          this.learnRecordType(l);
+          this.stmt(classifyLine(l, this.k));
+        }
         break;
       case 'jump': this.stmt(classifyJump(el, this.k)); break;
       case 'alternative': this.genIf(this.cond(el.text, this.k.preAlt, this.k.postAlt), el.thenBranch, el.elseBranch); break;
@@ -498,7 +510,7 @@ const JAVA_INIT: Record<BaseType, string> = { int: '0', double: '0.0', string: '
 class JavaGen extends CLikeGen {
   private usesScanner = false;
   protected fork() { return new JavaGen(this.lang, this.opts); }
-  private jt(t: VarType): string { return JAVA_TYPES[t.base] + (t.array ? '[]' : ''); }
+  private jt(t: VarType): string { return (t.name && t.base === 'unknown' ? t.name : JAVA_TYPES[t.base]) + (t.array ? '[]' : ''); }
 
   protected fileHeader(main: Diagram) {
     this.headerComments(main);
@@ -672,7 +684,7 @@ class CGen extends CLikeGen {
   protected fork() { return new CGen(this.lang, this.opts); }
   private ct(t: VarType) {
     if (t.base === 'bool') this.ctx.imports.add('stdbool.h');
-    return `${C_TYPES[t.base]}${t.array ? '*' : ''}`;
+    return `${t.name && t.base === 'unknown' ? t.name : C_TYPES[t.base]}${t.array ? '*' : ''}`;
   }
 
   protected fileHeader(main: Diagram) {
@@ -694,6 +706,7 @@ class CGen extends CLikeGen {
     for (const [name, t] of this.vars) {
       if (t.base === 'bool') this.ctx.imports.add('stdbool.h');
       if (t.array) this.line(`${C_TYPES[t.base]} ${name}[64] = {0};`);
+      else if (t.name && t.base === 'unknown') this.line(`${t.name} ${name};`);
       else this.line(`${C_TYPES[t.base]} ${name}${C_INIT[t.base]};`);
     }
     for (const inc of this.includedDiagrams(d)) {
@@ -808,7 +821,10 @@ const CPP_INIT: Record<BaseType, string> = { int: ' = 0', double: ' = 0.0', stri
 
 class CppGen extends CLikeGen {
   protected fork() { return new CppGen(this.lang, this.opts); }
-  private ct(t: VarType) { return t.array ? `std::vector<${CPP_TYPES[t.base]}>` : CPP_TYPES[t.base]; }
+  private ct(t: VarType) {
+    const b = t.name && t.base === 'unknown' ? t.name : CPP_TYPES[t.base];
+    return t.array ? `std::vector<${b}>` : b;
+  }
 
   protected fileHeader(main: Diagram) {
     this.headerComments(main);
@@ -883,7 +899,7 @@ const CS_INIT: Record<BaseType, string> = { int: '0', double: '0.0', string: '""
 
 class CSharpGen extends CLikeGen {
   protected fork() { return new CSharpGen(this.lang, this.opts); }
-  private ct(t: VarType): string { return CS_TYPES[t.base] + (t.array ? '[]' : ''); }
+  private ct(t: VarType): string { return (t.name && t.base === 'unknown' ? t.name : CS_TYPES[t.base]) + (t.array ? '[]' : ''); }
 
   protected fileHeader(main: Diagram) {
     this.headerComments(main);
@@ -991,7 +1007,10 @@ const PAS_TYPES: Record<BaseType, string> = { int: 'Integer', double: 'Real', st
 class PascalGen extends Gen {
   readonly cmt = '// ';
   protected fork() { return new PascalGen(this.lang, this.opts); }
-  private pt(t: VarType) { return t.array ? `array of ${PAS_TYPES[t.base]}` : PAS_TYPES[t.base]; }
+  private pt(t: VarType) {
+    const b = t.name && t.base === 'unknown' ? t.name : PAS_TYPES[t.base];
+    return t.array ? `array of ${b}` : b;
+  }
 
   protected fileHeader(main: Diagram) {
     this.headerComments(main);

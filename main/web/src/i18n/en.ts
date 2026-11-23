@@ -105,6 +105,22 @@ export const en = {
   groupPrompt: 'Name of the group for this diagram (empty: no group)',
   groupRenamePrompt: 'New name for the group',
   groupDissolveConfirm: 'Dissolve the group? The diagrams stay open:',
+  groupNew: 'New group or other name',
+  groupNone: 'No group',
+  groupNameReserved: 'This name belongs to the default group. Please choose another one.',
+  groupMergeConfirm: 'This group exists already. Merge both groups?',
+  installTitle: 'Structorizer on the Home Screen',
+  installIntro: 'On an iPad, Structorizer works best as a Home Screen app: full screen without the Safari bars, more room for the diagram, offline use, and Safari gestures no longer get in the way of finger and Apple Pencil.',
+  installStep1: 'In Safari, tap the Share button (top right):',
+  installStep2: 'Scroll down the list and tap "Add to Home Screen".',
+  installStep3: 'Tap "Add".',
+  installStep4: 'Open Structorizer with the new icon on your Home Screen.',
+  installDataNote: 'The Home Screen app has its own storage: save your diagrams as .nsd files first (File > Save) and open them there again.',
+  installSingleNote: 'This page is opened as a local file. Open the online version (visoire.github.io/structorizer) in Safari to add it to the Home Screen.',
+  installDone: 'Structorizer is already running as a Home Screen app.',
+  installNotNow: 'Not now',
+  installNever: 'Do not show again',
+  installMenu: 'Add to Home Screen (iPad) ...',
 } as const;
 
 export type Dict = Record<keyof typeof en, string>;

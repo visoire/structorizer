@@ -12,7 +12,7 @@ import { diagramVariables } from '../lang/analyze';
 export interface Rect { x: number; y: number; w: number; h: number }
 
 export type Item =
-  | ({ t: 'rect'; fill?: string; stroke?: boolean; rx?: number } & Rect)
+  | ({ t: 'rect'; fill?: string; stroke?: boolean; rx?: number; /** comment mark: stays visible when zoomed out */ mark?: boolean } & Rect)
   | { t: 'line'; x1: number; y1: number; x2: number; y2: number; dashed?: boolean }
   | { t: 'poly'; points: [number, number][]; fill?: string; closed?: boolean; stroke?: boolean }
   | { t: 'text'; x: number; y: number; s: string; anchor?: 'start' | 'middle' | 'end'; bold?: boolean; muted?: boolean; spans?: Span[] }
@@ -84,7 +84,7 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
   const disp = (l: string) => displayText(l, dopt);
   const mode = opts.textMode ?? 'text';
   /** Comment lines shown in "comments plus texts" mode, per element (muted when drawn). */
-  const commentLines = (el: Element) => el.comment.filter((c, i, a) => c.trim() !== '' || i < a.length - 1);
+  const commentLines = (el: Element) => cleanComment(el.comment);
   /** The lines an instruction-like box or loop header shows in the current text mode. */
   const shown = (el: Element): string[] => {
     const c = commentLines(el);
@@ -93,11 +93,16 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     return el.text;
   };
   const mutedCount = (el: Element) => (mode === 'both' && el.kind !== 'alternative' ? commentLines(el).length : 0);
+  /**
+   * Leading lines of shown(el) that are comment: drawn and measured as they are, without C operator
+   * replacement and variable highlighting (those are for code, not for comments).
+   */
+  const plainCount = (el: Element) => (mode === 'comments' ? (commentLines(el).length > 0 ? Infinity : 0) : mutedCount(el));
   let curVars: ReadonlySet<string> = new Set();
   let curKeywords: Diagram['keywords'] | undefined;
 
-  const textW = (lines: string[], bold = false) =>
-    lines.reduce((m, l) => Math.max(m, measure(disp(l), bold)), 0);
+  const textW = (lines: string[], bold = false, plain = 0) =>
+    lines.reduce((m, l, i) => Math.max(m, measure(i < plain ? l : disp(l), bold)), 0);
 
   const isCollapsed = (el: Element) => !!el.collapsed && slotsOf(el).length > 0;
 
@@ -109,10 +114,11 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
   /** Lines shown for an instruction-like box (at least one line). */
   const boxLines = (lines: string[]) => (lines.length === 0 ? [''] : lines);
 
-  const instrSize = (lines: string[], extraW = 0): Size => {
+  const instrSize = (lines: string[], extraW = 0, plain = 0): Size => {
     const ls = boxLines(lines);
-    return { w: textW(ls) + P + extraW, h: ls.length * LINE_H + P };
+    return { w: textW(ls, false, plain) + P + extraW, h: ls.length * LINE_H + P };
   };
+  const shownSize = (el: Element, extraW = 0) => instrSize(shown(el), extraW, plainCount(el));
 
   // ---- measuring (bottom-up, memoised by object identity)
 
@@ -142,9 +148,10 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     const lF = measure(F) * 1.5 + P;
     t.w = Math.max(t.w, lT);
     f.w = Math.max(f.w, lF);
-    const headerW = altHeaderWidth(lines.map((l) => measure(disp(l))), t.w);
+    const plain = plainCount(el) > 0;
+    const headerW = altHeaderWidth(lines.map((l) => measure(plain ? l : disp(l))), t.w);
     const H = n * LINE_H + 2 * P - 1;
-    return { lines, t, f, H, w: Math.ceil(Math.max(headerW, t.w + f.w)), h: H + Math.max(t.h, f.h) };
+    return { lines, plain, t, f, H, w: Math.ceil(Math.max(headerW, t.w + f.w)), h: H + Math.max(t.h, f.h) };
   }
 
   function caseMetrics(el: Extract<Element, { kind: 'case' }>) {
@@ -207,18 +214,18 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     let s: Size;
     if (isCollapsed(el)) s = instrSize(collapsedText(el));
     else switch (el.kind) {
-      case 'instruction': s = instrSize(shown(el)); break;
-      case 'call': s = instrSize(shown(el), P); break;
-      case 'jump': s = instrSize(shown(el), HALF); break;
+      case 'instruction': s = shownSize(el); break;
+      case 'call': s = shownSize(el, P); break;
+      case 'jump': s = shownSize(el, HALF); break;
       case 'while':
       case 'for': {
-        const hd = instrSize(shown(el));
+        const hd = shownSize(el);
         const b = measureSeq(el.body);
         s = { w: Math.max(hd.w, b.w + P), h: hd.h + b.h };
         break;
       }
       case 'repeat': {
-        const ft = instrSize(shown(el));
+        const ft = shownSize(el);
         const b = measureSeq(el.body);
         s = { w: Math.max(ft.w, b.w + P), h: ft.h + b.h };
         break;
@@ -259,9 +266,10 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     const line = (x1: number, y1: number, x2: number, y2: number) => items.push({ t: 'line', x1, y1, x2, y2 });
 
     const spansOf = (l: string) => (opts.highlight ? displaySpans(l, { ...dopt, highlight: true, vars: curVars, keywords: curKeywords }) : undefined);
-    const textLines = (lines: string[], x: number, y: number, muted = 0) =>
+    const textLines = (lines: string[], x: number, y: number, muted = 0, plain = muted) =>
       boxLines(lines).forEach((l, i) => {
         if (i < muted) text(x, y + HALF + i * LINE_H, l, { muted: true });
+        else if (i < plain) text(x, y + HALF + i * LINE_H, l);
         else text(x, y + HALF + i * LINE_H, disp(l), { spans: spansOf(l) });
       });
 
@@ -303,32 +311,32 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
       } else switch (el.kind) {
         case 'instruction':
           rect(box, fill);
-          textLines(shown(el), x + HALF, y, mutedCount(el));
+          textLines(shown(el), x + HALF, y, mutedCount(el), plainCount(el));
           break;
         case 'call':
           rect(box, fill);
           line(x + HALF, y, x + HALF, y + h);
           line(x + w - HALF, y, x + w - HALF, y + h);
-          textLines(shown(el), x + P, y, mutedCount(el));
+          textLines(shown(el), x + P, y, mutedCount(el), plainCount(el));
           break;
         case 'jump':
           rect(box, fill);
           items.push({ t: 'poly', points: [[x + HALF, y], [x, y + h / 2], [x + HALF, y + h]] });
-          textLines(shown(el), x + P, y, mutedCount(el));
+          textLines(shown(el), x + P, y, mutedCount(el), plainCount(el));
           break;
         case 'while':
         case 'for': {
-          const hh = instrSize(shown(el)).h;
+          const hh = shownSize(el).h;
           rect(box, fill);
-          textLines(shown(el), x + HALF, y, mutedCount(el));
+          textLines(shown(el), x + HALF, y, mutedCount(el), plainCount(el));
           setHead({ x, y, w, h: hh });
           placeSeq(el.body, { owner: el.id, slot: 'body' }, x + P, y + hh, w - P, h - hh);
           break;
         }
         case 'repeat': {
-          const fh = instrSize(shown(el)).h;
+          const fh = shownSize(el).h;
           rect(box, fill);
-          textLines(shown(el), x + HALF, y + h - fh, mutedCount(el));
+          textLines(shown(el), x + HALF, y + h - fh, mutedCount(el), plainCount(el));
           setHead({ x, y: y + h - fh, w, h: fh });
           placeSeq(el.body, { owner: el.id, slot: 'body' }, x + P, y, w - P, h - fh);
           break;
@@ -360,13 +368,13 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
           const coeffLeft = cy / (0 - tW);
           const coeffRight = cy / Math.max(1, w - tW);
           m.lines.forEach((l, i) => {
-            const s = disp(l);
+            const s = m.plain ? l : disp(l);
             const tw = measure(s);
             const by = 2 * P - P / 3 + (n - i - 1) * LINE_H;
             const leftSide = by / coeffLeft + tW;
             const bx = by / coeffRight + tW;
             const tx = x + HALF + leftSide + (bx - leftSide - tw) / 2;
-            text(Math.min(Math.max(tx, x + HALF), x + w - HALF - tw), y + P / 3 + i * LINE_H, s, { spans: spansOf(l) });
+            text(Math.min(Math.max(tx, x + HALF), x + w - HALF - tw), y + P / 3 + i * LINE_H, s, m.plain ? {} : { spans: spansOf(l) });
           });
           const labelTop = y + m.H - LINE_H - 2;
           text(x + HALF / 2, labelTop, T);
@@ -473,7 +481,7 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
         // comment mark: light grey bar at the left edge of the element head (Element.drawCommentMark)
         const hd = (hits[hitIndex] as Extract<Hit, { t: 'el' }>).head;
         const markColor = el.color.toLowerCase() === 'c0c0c0' ? '#ffffff' : '#c0c0c0';
-        items.push({ t: 'rect', x: hd.x + 2, y: hd.y + 2, w: 2, h: Math.max(2, hd.h - 4), fill: markColor, stroke: false });
+        items.push({ t: 'rect', x: hd.x + 2, y: hd.y + 2, w: 2, h: Math.max(2, hd.h - 4), fill: markColor, stroke: false, mark: true });
       }
       if (el.disabled) items.push({ t: 'hatch', ...box });
     }
@@ -481,8 +489,9 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     // ---- root frame
     // the root follows the text mode like its elements (desktop Root.prepareDraw/draw, enh. #128):
     // "switch text/comments" shows the comment as title, "comments plus texts" draws it above
-    const rootComment = d.comment.filter((c, i, a) => c.trim() !== '' || i < a.length - 1);
-    const title = boxLines(mode === 'comments' && rootComment.length > 0 ? rootComment : d.text);
+    const rootComment = cleanComment(d.comment);
+    const titleIsComment = mode === 'comments' && rootComment.length > 0;
+    const title = boxLines(titleIsComment ? rootComment : d.text);
     const boxed = d.boxed;
     const pad = boxed ? P : 0;
     const commPad = boxed ? P : HALF;
@@ -492,8 +501,8 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     const titleH = title.length * LINE_H + (boxed ? 2 * P : P);
     const body = measureSeq(d.children);
     const minW = Math.max(
-      textW(title, true) + 2 * (boxed ? P : HALF),
-      commH ? textW(rootComment) + 2 * commPad : 0,
+      textW(title, true, titleIsComment ? Infinity : 0) + 2 * (boxed ? P : HALF),
+      commH ? textW(rootComment, false, Infinity) + 2 * commPad : 0,
       inclH ? measure(inclText) + 2 * P + (boxed ? 2 * P : 0) : 0,
       body.w + 2 * pad,
     );
@@ -502,12 +511,22 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     const H = commH + inclH + titleH + body.h + bottomPad;
 
     const frameFill = fillOf(d.color);
+    // bevel of an includable like Root.draw: R_CORNER when boxed, E_PADDING/2 otherwise
+    const bevel = boxed ? ROOT_CORNER : HALF;
     if (d.diagramType === 'sub') items.push({ t: 'rect', x: 0, y: 0, w: W, h: H, fill: frameFill, stroke: true, rx: ROOT_CORNER });
     else if (d.diagramType === 'includable') {
-      const b = P;
+      const b = bevel;
       items.push({ t: 'poly', closed: true, fill: frameFill, points: [[b, 0], [W, 0], [W, H - b], [W - b, H], [0, H], [0, b]] });
     } else rect({ x: 0, y: 0, w: W, h: H }, frameFill);
     hits.push({ t: 'root', x: 0, y: 0, w: W, h: H });
+    if (opts.showComments !== false && rootComment.length > 0) {
+      // comment mark of the frame (Root.draw + Element.drawCommentMark); the elements drawn later cover
+      // it below the title, so it shows next to the title like on the desktop
+      const top = d.diagramType === 'sub' ? HALF : d.diagramType === 'includable' ? bevel : 0;
+      const bottom = d.diagramType === 'sub' ? H - HALF : H;
+      const markColor = d.color.toLowerCase() === 'c0c0c0' ? '#ffffff' : '#c0c0c0';
+      items.push({ t: 'rect', x: 2, y: top + 2, w: 2, h: Math.max(2, bottom - top - 4), fill: markColor, stroke: false, mark: true });
+    }
 
     if (commH) rootComment.forEach((l, i) => text(commPad, commPad + i * LINE_H, l, { muted: true }));
     if (inclH) {
@@ -516,13 +535,25 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
       items.push({ t: 'poly', closed: true, points: [[bx + b, by], [bx + bw, by], [bx + bw, by + bh - b], [bx + bw - b, by + bh], [bx, by + bh], [bx, by + b]] });
       text(bx + HALF, by + (bh - LINE_H) / 2, inclText, { muted: true });
     }
-    title.forEach((l, i) => text(boxed ? P : HALF, commH + inclH + (boxed ? P : HALF) + i * LINE_H, disp(l), { bold: true }));
+    title.forEach((l, i) => text(boxed ? P : HALF, commH + inclH + (boxed ? P : HALF) + i * LINE_H, titleIsComment ? l : disp(l), { bold: true }));
     placeSeq(d.children, { owner: 'root' }, pad, commH + inclH + titleH, W - 2 * pad, body.h);
 
     return { width: W + 1, height: H + 1, items, hits, gaps, font: { family: FONT_FAMILY, size: FONT_SIZE } };
   }
 
   return { layout, measureEl, measureSeq };
+}
+
+/**
+ * Comment lines worth showing: nothing when every line is blank (a comment of ['', ''] must not
+ * replace a title or reserve space), otherwise without leading and trailing blank lines.
+ */
+export function cleanComment(lines: string[]): string[] {
+  let a = 0;
+  let b = lines.length;
+  while (a < b && lines[a].trim() === '') a++;
+  while (b > a && lines[b - 1].trim() === '') b--;
+  return lines.slice(a, b);
 }
 
 /** Port of Alternative.prepareDraw header width computation (docs/layout-spec.md). */

@@ -54,7 +54,8 @@ export type ExecYield =
 2. **Diagram Overlays (`DiagramView.tsx`)**:
    - **Running element**: orange highlight (`#ffa500` fill / outline).
    - **Waiting parallel elements**: soft yellow (`#ffffd2`).
-   - **Runtime analysis & coverage (`P2-09`)**: when enabled, covered elements show a soft green coverage tint and their execution count badge (`×N`) at the top-right corner.
+   - **Runtime analysis & coverage (`P2-09`)**: when enabled, covered elements show a soft green coverage tint and their execution count badge (`×N`) at the top-right corner of the element head (for REPEAT at its condition). Like the desktop's "Collect Run Data", the counts add up over several runs while Coverage is on; **Reset** (Executor bar and Debug menu) clears them, switching Coverage on or off starts clean. Loop heads (WHILE, REPEAT, FOREVER, FOR) count every pass.
+- **OUTPUT and stepping (web.11)**: the `output` event of an OUTPUT element is consumed inside the same advance, so Step, Run, Pause and INPUT always stop on the next element; Resume does not skip a breakpoint on the following element.
 3. **Live Variable Watch (`P2-07`)**:
    - Displays all variables in the active stack frame with their type and formatted value.
    - **Editable while paused**: double-clicking or editing a value cell in the watch table updates the variable in the live frame immediately.

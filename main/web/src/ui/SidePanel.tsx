@@ -85,7 +85,6 @@ function ArrangerIndex() {
   ];
   type Doc = (typeof docs)[number];
   const TYPE_ORDER = { program: 0, sub: 1, includable: 2 } as const;
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const groupNames = [...new Set(Object.values(s.groups))].sort((a, b) => a.localeCompare(b));
   const byName = (a: Doc, b: Doc) => parseSignature(a.diagram).name.localeCompare(parseSignature(b.diagram).name);
 
@@ -117,12 +116,12 @@ function ArrangerIndex() {
 
   const groupSection = (name: string | null, list: Doc[]) => {
     const key = name ?? '\u0000default';
-    const isCollapsed = !!collapsed[key];
+    const isCollapsed = !!s.groupCollapsed[key];
     return (
       <section key={key} className="arr-group arr-named-group">
         <div className="arr-group-head">
           <button type="button" className="arr-group-toggle" aria-expanded={!isCollapsed}
-            onClick={() => setCollapsed({ ...collapsed, [key]: !isCollapsed })}>
+            onClick={() => s.toggleGroupCollapsed(key)}>
             <span className="mi-arrow" aria-hidden="true">▸</span>
             <span className="arr-group-name">{name ?? t('groupDefault')}</span>
             <span className="arr-group-count">{list.length}</span>
@@ -154,6 +153,7 @@ function ArrangerIndex() {
           {s.viewMode === 'arranger' ? t('backToEditor') : t('arrangerBoard')}
         </button>
         <button type="button" className="btn small" onClick={actions.exportArrz} title={t('exportArrz')}>.arrz</button>
+        <button type="button" className="btn small" title={t('groupAssign')} onClick={() => actions.moveToGroup(s.activeId)}>{t('groupAssign')}</button>
       </div>
       {groupNames.length > 0 ? (
         <>

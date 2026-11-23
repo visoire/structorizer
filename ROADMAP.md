@@ -2,13 +2,16 @@
 
 This document lists only what is **not yet implemented**. Reference: Structorizer Desktop
 3.32-35 (menus in `gui/Menu.java`, generators, parsers, Executor, Analyser, user guide).
-State checked against the code of `3.32.35-web.8` on 2026-11-18 (groups line updated for web.10).
+State checked against the code of `3.32.35-web.11` on 2026-11-23.
 
 Already at desktop level and therefore not listed: all 11 element types, .nsd round trip,
 desktop menus and key bindings, Arranger index and board (.arr/.arrz), Executor with step
 mode, breakpoints, variable watch, call stack and coverage overlay, Turtleizer, code preview,
 picture export (PNG, PNG multiple, EMF, PDF, SVG), find/replace, transmute, content assist,
-13 languages, PWA.
+13 languages, PWA. Since web.9-web.11 also: opening `.nsd`/`.arrz`/`.arr` by drag and drop,
+comment pop-ups and the root comment in all text modes, "smart" record initializers (executor and
+code export), run data that adds up over runs with a reset (Coverage), basic arrangement groups and
+an Add to Home Screen guide for the iPad.
 
 Priority: **A** = commonly used in school lessons, **B** = useful, **C** = rarely used / niche.
 
@@ -19,9 +22,10 @@ Priority: **A** = commonly used in school lessons, **B** = useful, **C** = rarel
 - [ ] **A – File API**: `fileOpen`, `fileCreate`, `fileAppend`, `fileRead`, `fileReadLine`, `fileReadInt`, `fileReadDouble`, `fileReadChar`, `fileWrite`, `fileWriteLine`, `fileEOF`, `fileClose` (desktop user guide, Syntax). In the browser via a virtual file system kept in local storage, with import/export of the files.
 - [ ] **B – Missing built-ins**: `split(string, separator)`, `signum(x)` (alias of `sgn`).
 - [ ] **B – Break triggers**: conditional breakpoints that stop only on the n-th pass (desktop "Specify break trigger ...", Ctrl+Alt+B) and "Ignore breakpoints" switch.
-- [ ] **B – Runtime analysis modes** like the desktop: execution counts, *step* counts (own and total, including subroutines), logarithmic colour scale, simple vs. deep test coverage; the web version shows counts and one coverage mode.
+- [ ] **B – Runtime analysis modes** like the desktop: execution counts, *step* counts (own and total, including subroutines), logarithmic colour scale, simple vs. deep test coverage; the web version shows execution counts (adding up over runs, with Reset) and one coverage mode.
 - [ ] **C – Turtleizer conversion**: Edit › "To fine graphics" / "To integer graphics" (switch `forward`/`fd` between integer and floating point moves).
 - [ ] **C – Further diagram controllers**: plug-in interface for controllers besides the Turtleizer (desktop "Optional controllers", proposal #1000 "Karel the Robot").
+- [ ] **B – Record types in code export**: the generators translate record initializers but only write the type definition as a comment; the desktop generates a class/struct/record declaration per type (Java/C#/C++/Pascal ...).
 - [ ] **C – Enum types** (`type Colour = enum{red, green}`), complete with Executor and code export (desktop #739).
 
 ## 2. Analyser
@@ -60,7 +64,7 @@ The desktop imports with GOLDParser grammars; the web version imports none of th
 - [ ] **A – Edit subroutine** (Ctrl+Enter on a CALL: open the called diagram or create it with a matching header; on a frame: open an included diagram).
 - [ ] **B – Outsource with parameter inference**: the web version moves the element into `sub1()`; the desktop also infers parameters and result variables from the variables used.
 - [ ] **B – View › Hide declarations?** and **View › DIN 66261?** (DIN symbol style for FOR loops).
-- [ ] **B – Drag and drop of `.nsd` / `.arrz` files** from the file manager onto the window to open them.
+- [ ] **B – "Comments plus texts?" for CASE, FOREVER, PARALLEL and TRY**: their comments are not drawn above the header yet (IF, loops, instructions, calls, jumps and the diagram frame do it since web.11).
 - [ ] **B – Print preview** with page setup (orientation, scaling, fit to page) like the desktop print dialog.
 - [ ] **C – (Re-)break text lines** (Edit menu: wrap long element texts at a chosen width).
 - [ ] **C – Copy vector picture (EMF) to the clipboard** (browsers only allow PNG and text; possible only in a native wrapper).
@@ -68,7 +72,7 @@ The desktop imports with GOLDParser grammars; the web version imports none of th
 
 ## 6. Arranger
 
-- [ ] **B – Arranger groups (rest)**: basic groups exist since web.10 (an .arrz opens as group, assign/rename/dissolve, save group as .arrz, frames on the board). Still missing: a diagram in several groups, group selection and moving on the board, group colours/visibility, congruence checks, Ctrl+G.
+- [ ] **B – Arranger groups (rest)**: basic groups exist since web.10/web.11 (.arrz and .arr open as group, group dialog, rename/dissolve with merge question, save group as .arrz, frames on the board, auto layout per group, kept in the session). Still missing: a diagram in several groups, group selection and moving on the board, group colours/visibility, congruence checks, Ctrl+G.
 - [ ] **B – Dependency arrows** between callers and subroutines/includables on the board.
 - [ ] **C – Arranger picture export** (PNG/SVG of the whole board) and print.
 
@@ -77,6 +81,7 @@ The desktop imports with GOLDParser grammars; the web version imports none of th
 - [ ] **C – Translator**: in-app editor for the language files (desktop File › Translator) to contribute translations.
 - [ ] **C – Command line batch conversion** like the desktop (`-x` export / `-p` import); the MCP CLI covers code and picture export, import is missing.
 - [ ] **B – Signed iPadOS / iOS build (`.ipa`)** from the Capacitor project (`main/web/capacitor.config.json`) with document-in-place editing in the Files app.
+- [ ] **B – Test pass on a real iPad** (Safari tab and Home Screen app): Apple Pencil hover and squeeze, palm rejection, file drop from the Files app, the Home Screen guide; so far tested in desktop browsers (Chromium) and with unit tests only.
 - [ ] **C – Optional desktop binary** (Tauri) around `main/web/dist`.
 
 ---

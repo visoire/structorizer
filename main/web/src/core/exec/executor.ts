@@ -94,8 +94,22 @@ export function formatValue(v: RuntimeVal): string {
   return '{' + entries.join(', ') + '}';
 }
 
+/** Hidden tag with the record type name (not enumerable: invisible to formatValue and code). */
+const RECORD_TYPE: unique symbol = Symbol('recordType');
+type RecordObj = { [k: string]: RuntimeVal };
+
+function tagRecord(obj: RecordObj, typeName: string): RecordObj {
+  Object.defineProperty(obj, RECORD_TYPE, { value: typeName, enumerable: false });
+  return obj;
+}
+
 export function typeNameOf(v: RuntimeVal, declared?: TypeInfo): string {
   if (declared && declared.base !== 'unknown') return declared.base + (declared.array ? '[]' : '');
+  if (declared?.name && !declared.array) return declared.name;
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const tn = (v as unknown as Record<symbol, string | undefined>)[RECORD_TYPE];
+    if (tn) return tn;
+  }
   if (v === null) return 'null';
   if (typeof v === 'boolean') return 'bool';
   if (typeof v === 'number') return Number.isInteger(v) ? 'int' : 'double';
@@ -226,14 +240,42 @@ export function* executeDiagram(
     return 0;
   };
 
+  /** A record type definition by name (exact, else ignoring case). */
+  const findTypeDef = (name: string): { name: string; fields: { name: string; type: TypeInfo }[] } | null => {
+    const exact = state.typeDefs.get(name);
+    if (exact) return { name, fields: exact };
+    for (const [n, fields] of state.typeDefs) if (n.toLowerCase() === name.toLowerCase()) return { name: n, fields };
+    return null;
+  };
+
+  /** Default value of a declared variable; a record type gets its components (var d: Date). */
+  const defaultFor = (t: TypeInfo): RuntimeVal => {
+    const rec = t.name && !t.array ? findTypeDef(t.name) : null;
+    if (!rec) return defaultForType(t);
+    const obj: RecordObj = {};
+    for (const c of rec.fields) obj[c.name] = defaultForType(c.type);
+    return tagRecord(obj, rec.name);
+  };
+
+  /** `var d: Date` and then `d <- {2026, 11, 23}`: the anonymous list fills the components in order. */
+  const asDeclaredRecord = (val: RuntimeVal, t: TypeInfo | undefined, elementId: string): RuntimeVal => {
+    if (!t?.name || t.array || !Array.isArray(val)) return val;
+    const rec = findTypeDef(t.name);
+    if (!rec) return val;
+    const obj: RecordObj = {};
+    rec.fields.forEach((c, i) => { obj[c.name] = i < val.length ? coerceToType(val[i], c.type, elementId) : defaultForType(c.type); });
+    return tagRecord(obj, rec.name);
+  };
+
   const setVar = (name: string, val: RuntimeVal, elementId: string, decl?: TypeInfo, isConst?: boolean) => {
     const f = topFrame();
     if (f.consts.has(name) && !decl && !isConst) {
       throw new RuntimeError(`Cannot reassign constant "${name}"`, elementId, f.diagramId);
     }
-    if (decl && decl.base !== 'unknown') f.types.set(name, decl);
+    if (decl && (decl.base !== 'unknown' || decl.name)) f.types.set(name, decl);
     if (isConst) f.consts.add(name);
-    const coerced = coerceToType(val, f.types.get(name), elementId);
+    const t = f.types.get(name);
+    const coerced = coerceToType(asDeclaredRecord(val, t, elementId), t, elementId);
     f.vars.set(name, coerced);
   };
 
@@ -454,22 +496,30 @@ export function* executeDiagram(
         return items;
       }
       case 'record': {
-        const obj: { [k: string]: RuntimeVal } = {};
-        const def = expr.typeName ? state.typeDefs.get(expr.typeName) : undefined;
-        if (def) {
-          for (const f of def) obj[f.name] = defaultForType(f.type);
+        const typed = expr.typeName ? findTypeDef(expr.typeName) : null;
+        if (expr.typeName && !typed) {
+          throw new RuntimeError(`Unknown record type "${expr.typeName}"`, elId, topFrame().diagramId);
         }
+        const def = typed?.fields;
+        const obj: RecordObj = {};
+        if (def) for (const f of def) obj[f.name] = defaultForType(f.type);
         // "smart" initializer: values without component name fill the components in declaration
-        // order; from the first named component on, unnamed values are ignored (user guide)
+        // order; from the first named component on, unnamed values are ignored (user guide) and
+        // not even evaluated (desktop Executor.evaluateRecordInitializer)
         let named = false;
         let posIdx = 0;
         for (const f of expr.fields) {
+          if (!f.name && (named || (def && posIdx >= def.length))) { posIdx++; continue; }
+          const comp = def ? (f.name ? def.find((c) => c.name === f.name) : def[posIdx]) : undefined;
+          if (def && f.name && !comp) {
+            throw new RuntimeError(`Record type "${typed!.name}" has no component "${f.name}"`, elId, topFrame().diagramId);
+          }
           const v = yield* evalExpr(f.value, elId, k);
-          if (f.name) { named = true; obj[f.name] = v; continue; }
-          if (!named && def && posIdx < def.length) obj[def[posIdx].name] = v;
-          posIdx++;
+          const name = f.name || comp?.name;
+          if (f.name) named = true; else posIdx++;
+          if (name) obj[name] = comp ? coerceToType(v, comp.type, elId) : v;
         }
-        return obj;
+        return typed ? tagRecord(obj, typed.name) : obj;
       }
       case 'unary': {
         const v = yield* evalExpr(expr.arg, elId, k);
@@ -578,7 +628,7 @@ export function* executeDiagram(
         return { s: 'none' };
       case 'decl':
         for (const name of stmt.names) {
-          setVar(name, defaultForType(stmt.type), elId, stmt.type, stmt.isConst);
+          setVar(name, defaultFor(stmt.type), elId, stmt.type, stmt.isConst);
         }
         return { s: 'none' };
       case 'assign': {
@@ -697,6 +747,8 @@ export function* executeDiagram(
                 break;
               }
               if (sig.s !== 'none') return sig;
+              // back to the loop head for the next item: counted like WHILE (coverage, step highlight)
+              yield* markStep(el, dId);
             }
             return { s: 'none' };
           }
@@ -713,6 +765,7 @@ export function* executeDiagram(
               break;
             }
             if (sig.s !== 'none') return sig;
+            yield* markStep(el, dId);
             setVar(fi.var, Number(getVar(fi.var)) + step, el.id);
           }
           return { s: 'none' };

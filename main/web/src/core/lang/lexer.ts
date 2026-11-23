@@ -126,11 +126,27 @@ export function stripKeywords(line: string, pre: string, post: string, ignoreCas
 export function joinContinuedLines(lines: string[]): string[] {
   const out: string[] = [];
   let buf = '';
+  // a record/struct type definition may spread over several lines until its '}' (one statement)
+  let openType = 0;
+  const braces = (s: string) => (s.match(/\{/g)?.length ?? 0) - (s.match(/\}/g)?.length ?? 0);
   for (const l of lines) {
-    if (l.trimEnd().endsWith('\\')) buf += l.trimEnd().slice(0, -1) + ' ';
-    else { out.push(buf + l); buf = ''; }
+    if (openType > 0) {
+      buf += l + '\n';
+      openType += braces(l);
+      if (openType <= 0) { out.push(buf.trimEnd()); buf = ''; openType = 0; }
+      continue;
+    }
+    if (l.trimEnd().endsWith('\\')) { buf += l.trimEnd().slice(0, -1) + ' '; continue; }
+    const line = buf + l;
+    if (/^\s*type\s+\w+\s*=\s*(record|struct)\b/i.test(line) && braces(line) > 0) {
+      buf = line + '\n';
+      openType = braces(line);
+      continue;
+    }
+    out.push(line);
+    buf = '';
   }
-  if (buf) out.push(buf);
+  if (buf) out.push(buf.trimEnd());
   return out;
 }
 

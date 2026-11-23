@@ -5,7 +5,8 @@ import { walk } from '../model/tree';
 import { indexTop, join, nonWs, splitTop, stripKeywords, stripParens, tokenize, trimToks, type Tok } from './lexer';
 
 export type BaseType = 'int' | 'double' | 'string' | 'char' | 'bool' | 'unknown';
-export interface TypeInfo { base: BaseType; array: boolean }
+/** `name`: the declared name of a type that is no built-in one, e.g. a record type `Date`. */
+export interface TypeInfo { base: BaseType; array: boolean; name?: string }
 
 const TYPE_ALIASES: Record<string, BaseType> = {
   int: 'int', integer: 'int', long: 'int', short: 'int', byte: 'int', cardinal: 'int', word: 'int', longint: 'int', unsigned: 'int',
@@ -22,7 +23,11 @@ export function parseType(raw: string | undefined): TypeInfo {
   const m = /^array\s*(\[[^\]]*\])?\s*of\s+(.+)$/.exec(s);
   if (m) { array = true; s = m[2].trim(); }
   if (s.endsWith('[]')) { array = true; s = s.slice(0, -2).trim(); }
-  return { base: TYPE_ALIASES[s] ?? 'unknown', array };
+  const base = TYPE_ALIASES[s];
+  if (base) return { base, array };
+  // keep the spelling of a user type (record types) for the executor and the variable display
+  const orig = /([A-Za-z_]\w*)\s*(\[\s*\])?\s*$/.exec(raw.trim())?.[1];
+  return orig && orig.toLowerCase() === s ? { base: 'unknown', array, name: orig } : { base: 'unknown', array };
 }
 
 // ------------------------------------------------------------------ keywords

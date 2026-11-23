@@ -16,6 +16,7 @@ import { clearPrintArea, loadSession, preparePrintArea, saveSession } from './ex
 import { Icon, KindIcon } from './icons';
 import { applyUiFont } from './fonts';
 import { bindVisualViewport } from './ipad';
+import { useInstallTip } from './InstallTip';
 import { MenuBar } from './MenuBar';
 import { SidePanel } from './SidePanel';
 
@@ -64,6 +65,10 @@ export function App() {
   useEffect(() => { document.documentElement.lang = htmlLang(p.lang); }, [p.lang]);
   useEffect(() => { applyUiFont(); }, [p.uiFont, p.customUiFont]);
   useEffect(() => bindVisualViewport(), []);
+  useInstallTip();
+  // Safari (iPadOS) may clear script storage of sites not used for a while: ask to keep the
+  // autosaved diagrams (granted silently for Home Screen apps; a refusal changes nothing)
+  useEffect(() => { void navigator.storage?.persist?.().catch(() => false); }, []);
 
   // ---------- restore + autosave of all open diagrams (local only)
   useEffect(() => {
@@ -78,10 +83,10 @@ export function App() {
     const h = setTimeout(() => {
       const { groups } = useStore.getState();
       const docs = useStore.getState().allDocs();
-      setStorageOk(saveSession(docs.map((d) => ({ diagram: d.diagram, fileName: d.fileName, group: groups[d.id] })), 0));
+      setStorageOk(saveSession(docs.map((d) => ({ diagram: d.diagram, fileName: d.fileName, group: groups[d.id], x: d.x, y: d.y, pinned: d.pinned })), 0));
     }, 800);
     return () => clearTimeout(h);
-  }, [s.diagram, s.docs, s.fileName, s.groups, restored]);
+  }, [s.diagram, s.docs, s.fileName, s.groups, s.activeX, s.activeY, s.activePinned, restored]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (!anyDirty(useStore.getState())) return;
@@ -144,7 +149,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const st = useStore.getState();
-      if (st.editor || st.dialog) return;
+      if (st.editor || st.dialog || st.groupDialog) return;
       const target = e.target as HTMLElement;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
       const ctrl = e.ctrlKey || e.metaKey;
@@ -215,8 +220,9 @@ export function App() {
   const title = parseSignature(s.diagram).name;
   const docCount = s.docs.length + 1;
   const hasEl = !!selEl;
-  const selComment = p.showComments && selEl && selEl.comment.some((c) => c.trim() !== '')
-    ? selEl.comment.map((c) => c.trim()).filter(Boolean).join(' · ')
+  const selCommentLines = selEl ? selEl.comment : sel?.t === 'root' ? s.diagram.comment : [];
+  const selComment = p.showComments && selCommentLines.some((c) => c.trim() !== '')
+    ? selCommentLines.map((c) => c.trim()).filter(Boolean).join(' · ')
     : '';
 
   return (

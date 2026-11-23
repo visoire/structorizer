@@ -274,7 +274,8 @@ kbd { font: 11px var(--mono); color: var(--text-dim); white-space: nowrap; }
 }
 .drag-ghost svg { width: 18px; height: 18px; stroke-width: 1.5; }
 .comment-tip {
-  position: fixed; z-index: 47; pointer-events: none; transform: translate(12px, 18px);
+  /* below the menus (40), context menu (45) and dialogs (50); placed and clamped by DiagramView */
+  position: fixed; z-index: 35; pointer-events: none;
   max-width: min(360px, calc(100vw - 32px)); padding: 6px 9px; border-radius: var(--r-widget);
   background: var(--menu-bg); color: var(--text); border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-popup); font-size: 12px; line-height: 1.45; white-space: pre-wrap;
@@ -364,6 +365,13 @@ kbd { font: 11px var(--mono); color: var(--text-dim); white-space: nowrap; }
 .arr-group li:hover .arr-close, .arr-group li.on .arr-close, .arr-close:focus-visible { opacity: 1; }
 .arr-close:hover { background: var(--danger); color: #fff; }
 .arr-group-btn { display: inline-flex; align-items: center; justify-content: center; margin-right: 0; }
+/* touch screens have no hover: the row actions of the Arranger index stay visible */
+@media (hover: none) { .arr-close { opacity: 1; } }
+.group-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.install-steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; line-height: 1.5; }
+.install-steps li::marker { font-weight: 700; color: var(--app-text); }
+.install-share { vertical-align: -3px; margin-left: 2px; color: var(--info); }
+.group-choices .btn.on { background: var(--app-checked); border-color: var(--app-border); }
 .arr-group-btn:hover { background: var(--hover); color: var(--text); }
 .arr-group-head { display: flex; align-items: center; gap: 4px; margin: 10px 8px 2px 6px; }
 .arr-group-head .icon-btn { margin-left: 0; width: 26px; height: 26px; }
@@ -786,10 +794,12 @@ details.attributes summary { cursor: default; font-weight: 600; font-size: 12px;
 }
 .arr-group-frame {
   position: absolute; pointer-events: none; border: 1.5px dashed var(--app-border); border-radius: var(--r-dialog);
-  background: var(--app-soft); opacity: 0.9;
+  background: var(--app-soft);
 }
 .arr-group-frame span {
-  position: absolute; left: 10px; top: 2px; font-size: 11px; font-weight: 650; color: var(--app-text);
+  /* above the cards (z-index): a card placed close to the top must not hide the group name */
+  position: absolute; z-index: 3; left: 10px; top: 2px; font-size: 11px; font-weight: 650; color: var(--app-text);
+  padding: 0 4px; border-radius: 3px; background: var(--menu-bg);
   white-space: nowrap; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis;
 }
 .arr-card.active { border-color: var(--app); box-shadow: 0 0 0 2px var(--app-checked), var(--shadow-popup); }
