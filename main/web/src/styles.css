@@ -273,6 +273,13 @@ kbd { font: 11px var(--mono); color: var(--text-dim); white-space: nowrap; }
   box-shadow: var(--shadow-popup); font-size: 12px; font-weight: 600; white-space: nowrap;
 }
 .drag-ghost svg { width: 18px; height: 18px; stroke-width: 1.5; }
+.comment-tip {
+  position: fixed; z-index: 47; pointer-events: none; transform: translate(12px, 18px);
+  max-width: min(360px, calc(100vw - 32px)); padding: 6px 9px; border-radius: var(--r-widget);
+  background: var(--menu-bg); color: var(--text); border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-popup); font-size: 12px; line-height: 1.45; white-space: pre-wrap;
+  animation: fade-in var(--t-fast) var(--ease);
+}
 .drag-ghost.no-drop { opacity: 0.6; border-color: var(--border-strong); }
 .drop-overlay {
   position: fixed; inset: 0; z-index: 70; pointer-events: none;
@@ -356,6 +363,19 @@ kbd { font: 11px var(--mono); color: var(--text-dim); white-space: nowrap; }
 .arr-close { width: 26px; height: 26px; margin-right: 3px; border: 0; background: transparent; color: var(--text-dim); font-size: 15px; cursor: default; border-radius: var(--r-widget); opacity: 0; transition: opacity var(--t-fast), background-color var(--t-fast); }
 .arr-group li:hover .arr-close, .arr-group li.on .arr-close, .arr-close:focus-visible { opacity: 1; }
 .arr-close:hover { background: var(--danger); color: #fff; }
+.arr-group-btn { display: inline-flex; align-items: center; justify-content: center; margin-right: 0; }
+.arr-group-btn:hover { background: var(--hover); color: var(--text); }
+.arr-group-head { display: flex; align-items: center; gap: 4px; margin: 10px 8px 2px 6px; }
+.arr-group-head .icon-btn { margin-left: 0; width: 26px; height: 26px; }
+.arr-group-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px;
+  border: 0; background: transparent; border-radius: var(--r-widget); cursor: default; text-align: left;
+  font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--group-label);
+}
+.arr-group-toggle:hover { background: var(--hover); }
+.arr-group-toggle[aria-expanded="true"] .mi-arrow { transform: rotate(90deg); }
+.arr-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arr-group-count { margin-left: auto; font-weight: 600; color: var(--text-dim); letter-spacing: 0; }
 
 /* ================================================================ Executor & Turtleizer */
 .exec-panel {
@@ -763,6 +783,14 @@ details.attributes summary { cursor: default; font-weight: 600; font-size: 12px;
   background: var(--menu-bg); border: 1px solid var(--border-strong);
   border-radius: var(--r-popup); box-shadow: var(--shadow-popup);
   overflow: hidden; user-select: none; -webkit-user-select: none;
+}
+.arr-group-frame {
+  position: absolute; pointer-events: none; border: 1.5px dashed var(--app-border); border-radius: var(--r-dialog);
+  background: var(--app-soft); opacity: 0.9;
+}
+.arr-group-frame span {
+  position: absolute; left: 10px; top: 2px; font-size: 11px; font-weight: 650; color: var(--app-text);
+  white-space: nowrap; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis;
 }
 .arr-card.active { border-color: var(--app); box-shadow: 0 0 0 2px var(--app-checked), var(--shadow-popup); }
 .arr-card.pinned .arr-card-head { cursor: default; }

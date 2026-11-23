@@ -55,7 +55,8 @@ export const actions = {
         const low = file.name.toLowerCase();
         if (low.endsWith('.arrz')) {
           const bundle = await readArrzFile(file);
-          st().openArrz(bundle.entries);
+          // like the desktop Arranger, the diagrams of an arrangement form a group named after the file
+          st().openArrz(bundle.entries, file.name.replace(/\.arrz$/i, ''));
           notify(`Loaded ${bundle.entries.length} diagrams from ${file.name}`, 'success');
           return;
         }
@@ -90,6 +91,36 @@ export const actions = {
   exportArr: () => {
     exportArrFile(st().allDocs());
     notify(`${t()('exported')}: ARR`, 'success');
+  },
+
+  // ---------------------------------------------------------------- Arrangement groups
+  /** Saves the diagrams of one group as portable arrangement (.arrz named after the group). */
+  exportGroupArrz: (group: string) => {
+    const s = st();
+    const docs = s.allDocs().filter((d) => s.groups[d.id] === group);
+    if (docs.length === 0) return;
+    exportArrzFile(docs, group);
+    notify(`${t()('exported')}: ${group}.arrz`, 'success');
+  },
+
+  /** Puts a diagram into a group (new or existing name); an empty name takes it out again. */
+  moveToGroup: (id: string) => {
+    const s = st();
+    const names = [...new Set(Object.values(s.groups))].sort();
+    const current = s.groups[id] ?? '';
+    const hint = names.length ? `\n(${names.join(', ')})` : '';
+    const name = window.prompt(`${t()('groupPrompt')}${hint}`, current);
+    if (name === null) return;
+    s.setDocGroup(id, name);
+  },
+
+  renameGroup: (group: string) => {
+    const name = window.prompt(t()('groupRenamePrompt'), group);
+    if (name !== null) st().renameGroup(group, name);
+  },
+
+  dissolveGroup: (group: string) => {
+    if (window.confirm(`${t()('groupDissolveConfirm')} "${group}"`)) st().dissolveGroup(group);
   },
 
   toggleArrangerBoard: () => {

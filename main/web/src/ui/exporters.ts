@@ -172,21 +172,21 @@ export function addRecent(name: string, xml: string): void {
 const SESSION_KEY = 'structorizer-web:session';
 const OLD_KEY = 'structorizer-web:current';
 
-export function saveSession(docs: { diagram: Diagram; fileName: string | null }[], active: number): boolean {
+export function saveSession(docs: { diagram: Diagram; fileName: string | null; group?: string }[], active: number): boolean {
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ active, docs: docs.map((d) => ({ xml: writeNsd(d.diagram, APP_VERSION), fileName: d.fileName })) }));
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ active, docs: docs.map((d) => ({ xml: writeNsd(d.diagram, APP_VERSION), fileName: d.fileName, group: d.group })) }));
     return true;
   } catch {
     return false;
   }
 }
 
-export function loadSession(): { docs: { diagram: Diagram; fileName: string | null }[]; active: number } | null {
+export function loadSession(): { docs: { diagram: Diagram; fileName: string | null; group?: string }[]; active: number } | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (raw) {
-      const s = JSON.parse(raw) as { active: number; docs: { xml: string; fileName: string | null }[] };
-      return { active: s.active, docs: s.docs.map((x) => ({ diagram: readNsd(x.xml).diagram, fileName: x.fileName })) };
+      const s = JSON.parse(raw) as { active: number; docs: { xml: string; fileName: string | null; group?: string }[] };
+      return { active: s.active, docs: s.docs.map((x) => ({ diagram: readNsd(x.xml).diagram, fileName: x.fileName, group: x.group })) };
     }
     const old = localStorage.getItem(OLD_KEY); // version 0.1.0
     if (old) {

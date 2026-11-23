@@ -95,6 +95,16 @@ export const en = {
   panelPos: 'Side panel position', execPos: 'Executor panel position',
   posLeft: 'Left', posRight: 'Right', posBottom: 'Bottom', posTop: 'Top',
   dropFiles: 'Drop .nsd, .arrz or .arr files to open them', dropNoFiles: 'No .nsd, .arrz or .arr file in the drop',
+  coverageReset: 'Reset', coverageResetHint: 'Reset the execution counters and coverage marks',
+  coverageHint: 'While Coverage is on, execution counts add up over several runs until you reset them. Switching Coverage off clears them.',
+  groupDefault: 'Default group',
+  groupAssign: 'Group ...',
+  groupSave: 'Save group as arrangement (.arrz)',
+  groupRename: 'Rename group',
+  groupDissolve: 'Dissolve group (the diagrams stay open)',
+  groupPrompt: 'Name of the group for this diagram (empty: no group)',
+  groupRenamePrompt: 'New name for the group',
+  groupDissolveConfirm: 'Dissolve the group? The diagrams stay open:',
 } as const;
 
 export type Dict = Record<keyof typeof en, string>;

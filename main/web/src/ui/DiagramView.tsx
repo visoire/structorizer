@@ -213,7 +213,32 @@ export function DiagramView() {
     if (navigator.vibrate) { try { navigator.vibrate(15); } catch { /* ignore */ } }
   };
 
+  // ---------- comment pop-up while hovering a commented element or the diagram frame
+  // ("Show comments?" mode, like the desktop tooltip)
+  const [commentTip, setCommentTip] = useState<{ key: string; x: number; y: number; lines: string[] } | null>(null);
+  const tipTimer = useRef<number | null>(null);
+  const tipKey = useRef<string | null>(null);
+  const hideCommentTip = () => {
+    if (tipTimer.current) { clearTimeout(tipTimer.current); tipTimer.current = null; }
+    tipKey.current = null;
+    setCommentTip(null);
+  };
+  const updateCommentTip = (h: Hit | null, x: number, y: number) => {
+    const lines = !prefs.showComments || !h || h.t === 'seq' ? []
+      : (h.t === 'el' ? h.comment : diagram.comment).map((c) => c.trimEnd()).filter((c) => c.trim() !== '');
+    const key = lines.length === 0 || !h ? null : h.t === 'el' ? h.id : 'root';
+    if (key !== tipKey.current) {
+      hideCommentTip();
+      if (!key) return;
+      tipKey.current = key;
+      tipTimer.current = window.setTimeout(() => setCommentTip({ key, x, y, lines }), 450);
+      return;
+    }
+    if (key) setCommentTip((tip) => (tip ? { ...tip, x, y } : tip));
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    hideCommentTip();
     const arb = arbitrator.current.onPointerDown(e.nativeEvent);
     if (arb.reject) {
       e.preventDefault();
@@ -253,12 +278,12 @@ export function DiagramView() {
 
   const onPointerMove = (e: React.PointerEvent) => {
     arbitrator.current.onPointerMove(e.nativeEvent);
-    // Apple Pencil Hover (M2+ iPad Pro / Air): highlight target element before touching glass
-    if (e.pointerType === 'pen' && e.buttons === 0 && !press.current) {
+    if (e.buttons === 0 && !press.current && (e.pointerType === 'mouse' || e.pointerType === 'pen')) {
       const pt = toScene(e.clientX, e.clientY);
       const h = hitTest(scene, pt.x, pt.y);
-      setHoverId(h?.t === 'el' ? h.id : null);
-      return;
+      updateCommentTip(h, e.clientX, e.clientY);
+      // Apple Pencil Hover (M2+ iPad Pro / Air): highlight target element before touching glass
+      if (e.pointerType === 'pen') { setHoverId(h?.t === 'el' ? h.id : null); return; }
     }
     if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch.current && pointers.current.size === 2) {
@@ -538,7 +563,7 @@ export function DiagramView() {
         onPointerMove={onPointerMove}
         onPointerUp={(e) => finish(e, false)}
         onPointerCancel={(e) => finish(e, true)}
-        onPointerLeave={() => setHoverId(null)}
+        onPointerLeave={() => { setHoverId(null); hideCommentTip(); }}
         onContextMenu={(e) => {
           e.preventDefault();
           if (press.current && press.current.type !== 'mouse') return;
@@ -564,6 +589,11 @@ export function DiagramView() {
         )}
       </div>
       {quickDish && <QuickDish point={quickDish} />}
+      {commentTip && !dragId && (
+        <div className="comment-tip" role="tooltip" style={{ left: commentTip.x, top: commentTip.y }}>
+          {commentTip.lines.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      )}
       {ghost && dragHit && (
         <div className={'drag-ghost' + (gap ? '' : ' no-drop')} style={{ left: ghost.x, top: ghost.y }} aria-hidden="true">
           <KindIcon kind={dragHit.kind} />
@@ -645,6 +675,28 @@ function ArrangerBoard({ engine, dark }: { engine: ReturnType<typeof createLayou
   const docs = s.allDocs();
   const dragRef = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
 
+  // one frame per arrangement group around its cards (desktop Group.draw), measured after layout
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [frames, setFrames] = useState<{ name: string; x: number; y: number; w: number; h: number }[]>([]);
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const box = new Map<string, { x0: number; y0: number; x1: number; y1: number }>();
+    canvas.querySelectorAll<HTMLElement>('.arr-card[data-group]').forEach((el) => {
+      const g = el.dataset.group!;
+      const b = box.get(g) ?? { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+      b.x0 = Math.min(b.x0, el.offsetLeft); b.y0 = Math.min(b.y0, el.offsetTop);
+      b.x1 = Math.max(b.x1, el.offsetLeft + el.offsetWidth); b.y1 = Math.max(b.y1, el.offsetTop + el.offsetHeight);
+      box.set(g, b);
+    });
+    const PAD = 12;
+    const next = [...box].map(([name, b]) => {
+      const x = Math.max(0, b.x0 - PAD), y = Math.max(0, b.y0 - PAD - 18);
+      return { name, x, y, w: b.x1 + PAD - x, h: b.y1 + PAD - y };
+    });
+    setFrames((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  });
+
   return (
     <div
       className="arranger-board-wrap"
@@ -665,7 +717,12 @@ function ArrangerBoard({ engine, dark }: { engine: ReturnType<typeof createLayou
         <button type="button" className="btn small" onClick={actions.exportArr}>.arr</button>
         <button type="button" className="btn small primary" onClick={() => s.setViewMode('editor')}>{t('backToEditor')}</button>
       </div>
-      <div className="arranger-board-canvas">
+      <div className="arranger-board-canvas" ref={canvasRef}>
+        {frames.map((f) => (
+          <div key={'grp-' + f.name} className="arr-group-frame" style={{ left: f.x, top: f.y, width: f.w, height: f.h }} aria-hidden="true">
+            <span>{f.name}</span>
+          </div>
+        ))}
         {docs.map((doc) => {
           const sig = parseSignature(doc.diagram);
           const sc = engine.layout(doc.diagram);
@@ -677,6 +734,7 @@ function ArrangerBoard({ engine, dark }: { engine: ReturnType<typeof createLayou
             <div
               key={doc.id}
               className={'arr-card' + (doc.active ? ' active' : '') + (doc.pinned ? ' pinned' : '')}
+              data-group={s.groups[doc.id]}
               style={{ left: x, top: y }}
               onClick={() => s.switchDoc(doc.id)}
               onDoubleClick={() => { s.switchDoc(doc.id); s.setViewMode('editor'); }}

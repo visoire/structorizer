@@ -285,7 +285,8 @@ export function translateAst(node: Expr, ctx: ExprCtx): string {
       return `[${items.join(', ')}]`;
     }
     case 'record': {
-      const entries = node.fields.map((f) => `${JSON.stringify(f.name)}: ${translateAst(f.value, ctx)}`);
+      // positional ("smart") items have no component name: keep them as plain values
+      const entries = node.fields.map((f) => (f.name ? `${JSON.stringify(f.name)}: ` : '') + translateAst(f.value, ctx));
       return `{${entries.join(', ')}}`;
     }
   }

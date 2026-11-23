@@ -10,6 +10,53 @@ build number. Desktop issue numbers refer to
 
 ## [Unreleased]
 
+## [3.32.35-web.10] – 2026-11-23 (corresponds to Structorizer 3.32-35)
+
+Fixes for the first feedback of the Structorizer Desktop maintainer (7 points, e-mail of
+2026-11-23). Each point is covered by a regression test in `main/web/tests/owner-fixes.test.ts`.
+
+### Fixed
+- **Root comment in "Comments plus texts?"** (point 1): the comment of the diagram frame was never
+  drawn. It now appears muted above the title (above the include list) like in Structorizer Desktop
+  (`Root.prepareDraw/draw`, enh. #128), and "Switch text/comments?" shows the root comment instead
+  of the title. `core/layout/layout.ts`.
+- **Comment pop-up on hover** (point 2): with "Show comments?" on, resting the mouse (or the Apple
+  Pencil hover) on a commented element or on the diagram frame shows its comment in a tooltip after
+  about half a second. `ui/DiagramView.tsx`, `styles.css`.
+- **Step after an OUTPUT element** (point 3): one Step used to stop on the OUTPUT element again
+  (its output event counted as a step), so a second Step was needed. Step now runs on to the next
+  element. Related: after answering an INPUT prompt while stepping, execution continued as "Run";
+  it now stays in step mode. `store/execStore.ts`.
+- **"Smart" record initializers** (point 4): `today <- Date{2026, 11, 23}` now works after
+  `type Date = record{year: int; month, day: short}`. Values without a component name fill the
+  components in declaration order; from the first named component on, further unnamed values are
+  ignored (user guide, "Records / Structs"). Two parser bugs caused this: every item in `Type{...}`
+  was read as `name: value`, and in the type definition a component list like `month, day: short`
+  lost `month`. `core/lang/parser.ts`, `core/exec/executor.ts`; the code preview keeps unnamed
+  values as plain values (`core/gen/expr.ts`).
+- **Lines vanished when zooming out** (point 6): below 100 % the stroke width shrank under one
+  pixel and disappeared with crisp edges. Lines now keep at least one device pixel at every zoom
+  (exports are unchanged). `core/render/svg.ts`.
+
+### Changed
+- **Resetting execution counts / coverage** (point 5): like the desktop's "Collect Run Data", the
+  counts now add up over several runs while **Coverage** is on, and a new **Reset** button next to
+  it clears them. Switching Coverage off clears them as well. Tooltips explain both.
+  `store/execStore.ts`, `ui/ExecutorPanel.tsx`.
+
+### Added
+- **Arrangement groups (basic)** (point 7): opening an `.arrz` puts its diagrams into a group named
+  after the file (as in the desktop Arranger). The Arranger index then lists the diagrams by group
+  (collapsible, with count) plus a default group; each group can be saved as `.arrz`, renamed or
+  dissolved (the diagrams stay open), and the folder button on every diagram puts it into a new or
+  existing group or takes it out. The Arranger board draws a labelled frame around each group.
+  Groups are kept in the local session. Not yet: a diagram in several groups, moving whole groups
+  on the board, group colours (see ROADMAP). `store/diagramStore.ts`, `ui/SidePanel.tsx`,
+  `ui/DiagramView.tsx`, `ui/actions.ts`, `ui/exporters.ts`.
+- 11 new UI strings in all 13 languages (coverage reset, groups).
+- MCP server/CLI: no code change needed. It uses the same parser and executor, so `run` and
+  `execute-diagram` handle smart record initializers too (checked with the CLI).
+
 ## [3.32.35-web.9] – 2026-11-19 (corresponds to Structorizer 3.32-35)
 
 UI/UX pass: small fixes that make everyday editing on desktop and iPad smoother.

@@ -2,7 +2,7 @@
 
 This document lists only what is **not yet implemented**. Reference: Structorizer Desktop
 3.32-35 (menus in `gui/Menu.java`, generators, parsers, Executor, Analyser, user guide).
-State checked against the code of `3.32.35-web.8` on 2026-11-18.
+State checked against the code of `3.32.35-web.8` on 2026-11-18 (groups line updated for web.10).
 
 Already at desktop level and therefore not listed: all 11 element types, .nsd round trip,
 desktop menus and key bindings, Arranger index and board (.arr/.arrz), Executor with step
@@ -68,7 +68,7 @@ The desktop imports with GOLDParser grammars; the web version imports none of th
 
 ## 6. Arranger
 
-- [ ] **B – Arranger groups**: create, rename, dissolve, expand groups, move diagrams between groups (desktop Arranger index, Ctrl+G ...).
+- [ ] **B – Arranger groups (rest)**: basic groups exist since web.10 (an .arrz opens as group, assign/rename/dissolve, save group as .arrz, frames on the board). Still missing: a diagram in several groups, group selection and moving on the board, group colours/visibility, congruence checks, Ctrl+G.
 - [ ] **B – Dependency arrows** between callers and subroutines/includables on the board.
 - [ ] **C – Arranger picture export** (PNG/SVG of the whole board) and print.
 

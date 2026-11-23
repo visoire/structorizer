@@ -83,6 +83,68 @@ function ArrangerIndex() {
     { label: t('subroutines'), type: 'sub' },
     { label: t('includables'), type: 'includable' },
   ];
+  type Doc = (typeof docs)[number];
+  const TYPE_ORDER = { program: 0, sub: 1, includable: 2 } as const;
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const groupNames = [...new Set(Object.values(s.groups))].sort((a, b) => a.localeCompare(b));
+  const byName = (a: Doc, b: Doc) => parseSignature(a.diagram).name.localeCompare(parseSignature(b.diagram).name);
+
+  const item = (d: Doc) => {
+    const type = d.diagram.diagramType;
+    const sig = parseSignature(d.diagram);
+    const label = type === 'sub' ? `${sig.name}(${sig.params.length})` : sig.name;
+    return (
+      <li key={d.id} className={d.active ? 'on' : undefined}>
+        <button type="button" className="arr-item" title={d.fileName ?? d.diagram.text.join(' ')}
+          onClick={() => {
+            s.switchDoc(d.id);
+            if (window.innerWidth < 1100) usePrefs.getState().set({ panelOpen: false });
+          }}>
+          <span className={'arr-icon ' + type} aria-hidden="true" />
+          <span className="arr-name">{label}</span>
+          {d.dirty && <span className="dot" aria-label={t('unsaved')}>•</span>}
+          {d.fileName && <span className="arr-file">{d.fileName}</span>}
+        </button>
+        <button type="button" className="arr-close arr-group-btn" aria-label={t('groupAssign')} title={t('groupAssign')}
+          onClick={() => actions.moveToGroup(d.id)}>
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 3.5h4l1.2 1.4h5.8v6.6h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>
+        </button>
+        <button type="button" className="arr-close" aria-label={t('closeDiagram')} title={t('closeDiagram')}
+          onClick={() => actions.closeDiagram(d.id)}>×</button>
+      </li>
+    );
+  };
+
+  const groupSection = (name: string | null, list: Doc[]) => {
+    const key = name ?? '\u0000default';
+    const isCollapsed = !!collapsed[key];
+    return (
+      <section key={key} className="arr-group arr-named-group">
+        <div className="arr-group-head">
+          <button type="button" className="arr-group-toggle" aria-expanded={!isCollapsed}
+            onClick={() => setCollapsed({ ...collapsed, [key]: !isCollapsed })}>
+            <span className="mi-arrow" aria-hidden="true">▸</span>
+            <span className="arr-group-name">{name ?? t('groupDefault')}</span>
+            <span className="arr-group-count">{list.length}</span>
+          </button>
+          {name && (
+            <>
+              <button type="button" className="btn small" title={t('groupSave')} onClick={() => actions.exportGroupArrz(name)}>.arrz</button>
+              <button type="button" className="icon-btn" aria-label={t('groupRename')} title={t('groupRename')} onClick={() => actions.renameGroup(name)}>
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 12l1-3 6.5-6.5 2 2L5 11z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /></svg>
+              </button>
+              <button type="button" className="icon-btn close" aria-label={t('groupDissolve')} title={t('groupDissolve')} onClick={() => actions.dissolveGroup(name)}>
+                <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+              </button>
+            </>
+          )}
+        </div>
+        {!isCollapsed && (
+          <ul>{[...list].sort((a, b) => TYPE_ORDER[a.diagram.diagramType] - TYPE_ORDER[b.diagram.diagramType] || byName(a, b)).map(item)}</ul>
+        )}
+      </section>
+    );
+  };
   return (
     <div className="arranger">
       <div className="panel-tools">
@@ -93,35 +155,21 @@ function ArrangerIndex() {
         </button>
         <button type="button" className="btn small" onClick={actions.exportArrz} title={t('exportArrz')}>.arrz</button>
       </div>
-      {groups.map((g) => {
-        const list = docs.filter((d) => d.diagram.diagramType === g.type)
-          .sort((a, b) => parseSignature(a.diagram).name.localeCompare(parseSignature(b.diagram).name));
+      {groupNames.length > 0 ? (
+        <>
+          {groupNames.map((g) => groupSection(g, docs.filter((d) => s.groups[d.id] === g)))}
+          {(() => {
+            const rest = docs.filter((d) => !s.groups[d.id]);
+            return rest.length > 0 ? groupSection(null, rest) : null;
+          })()}
+        </>
+      ) : groups.map((g) => {
+        const list = docs.filter((d) => d.diagram.diagramType === g.type).sort(byName);
         if (list.length === 0) return null;
         return (
           <section key={g.type} className="arr-group">
             <h3>{g.label}</h3>
-            <ul>
-              {list.map((d) => {
-                const sig = parseSignature(d.diagram);
-                const label = g.type === 'sub' ? `${sig.name}(${sig.params.length})` : sig.name;
-                return (
-                  <li key={d.id} className={d.active ? 'on' : undefined}>
-                    <button type="button" className="arr-item" title={d.fileName ?? d.diagram.text.join(' ')}
-                      onClick={() => {
-                        s.switchDoc(d.id);
-                        if (window.innerWidth < 1100) usePrefs.getState().set({ panelOpen: false });
-                      }}>
-                      <span className={'arr-icon ' + g.type} aria-hidden="true" />
-                      <span className="arr-name">{label}</span>
-                      {d.dirty && <span className="dot" aria-label={t('unsaved')}>•</span>}
-                      {d.fileName && <span className="arr-file">{d.fileName}</span>}
-                    </button>
-                    <button type="button" className="arr-close" aria-label={t('closeDiagram')} title={t('closeDiagram')}
-                      onClick={() => actions.closeDiagram(d.id)}>×</button>
-                  </li>
-                );
-              })}
-            </ul>
+            <ul>{list.map(item)}</ul>
           </section>
         );
       })}

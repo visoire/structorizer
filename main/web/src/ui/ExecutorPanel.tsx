@@ -185,10 +185,22 @@ export function ExecutorPanel({ placement }: { placement?: 'vertical' | 'horizon
               type="button"
               className={'btn small' + (ex.coverageOverlay ? ' on' : '')}
               aria-pressed={ex.coverageOverlay}
+              title={t('coverageHint')}
               onClick={ex.toggleCoverage}
             >
               ✓ {t('coverage')}
             </button>
+            {ex.coverageOverlay && (
+              <button
+                type="button"
+                className="btn small"
+                disabled={ex.status === 'running' || ex.execState.execCounts.size === 0}
+                title={t('coverageResetHint')}
+                onClick={ex.resetCoverage}
+              >
+                ↺ {t('coverageReset')}
+              </button>
+            )}
             <button
               type="button"
               className={'btn small' + (ex.turtleOpen ? ' on' : '')}

@@ -14,7 +14,7 @@ current browser, including Safari on iPad (desktop issue
   resources. Both builds enforce this with a Content Security Policy (`connect-src 'none'`).
 - **Compatible**: reads and writes the `.nsd` files of Structorizer Desktop 3.32.
 
-Version **3.32-35** (web build `3.32.35-web.9`) · **[Live Web App (GitHub Pages)](https://visoire.github.io/structorizer/)** · **[Single-File Edition](https://visoire.github.io/structorizer/structorizer-single.html)** · [Documentation](https://visoire.github.io/structorizer/docs/) · [Changelog](CHANGELOG.md) ·
+Version **3.32-35** (web build `3.32.35-web.10`) · **[Live Web App (GitHub Pages)](https://visoire.github.io/structorizer/)** · **[Single-File Edition](https://visoire.github.io/structorizer/structorizer-single.html)** · [Documentation](https://visoire.github.io/structorizer/docs/) · [Changelog](CHANGELOG.md) ·
 [Roadmap](ROADMAP.md)
 
 <p align="center">

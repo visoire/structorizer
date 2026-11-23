@@ -455,10 +455,20 @@ export function* executeDiagram(
       }
       case 'record': {
         const obj: { [k: string]: RuntimeVal } = {};
-        if (expr.typeName && state.typeDefs.has(expr.typeName)) {
-          for (const f of state.typeDefs.get(expr.typeName)!) obj[f.name] = defaultForType(f.type);
+        const def = expr.typeName ? state.typeDefs.get(expr.typeName) : undefined;
+        if (def) {
+          for (const f of def) obj[f.name] = defaultForType(f.type);
         }
-        for (const f of expr.fields) obj[f.name] = yield* evalExpr(f.value, elId, k);
+        // "smart" initializer: values without component name fill the components in declaration
+        // order; from the first named component on, unnamed values are ignored (user guide)
+        let named = false;
+        let posIdx = 0;
+        for (const f of expr.fields) {
+          const v = yield* evalExpr(f.value, elId, k);
+          if (f.name) { named = true; obj[f.name] = v; continue; }
+          if (!named && def && posIdx < def.length) obj[def[posIdx].name] = v;
+          posIdx++;
+        }
         return obj;
       }
       case 'unary': {

@@ -479,21 +479,27 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     }
 
     // ---- root frame
-    const title = boxLines(d.text);
+    // the root follows the text mode like its elements (desktop Root.prepareDraw/draw, enh. #128):
+    // "switch text/comments" shows the comment as title, "comments plus texts" draws it above
+    const rootComment = d.comment.filter((c, i, a) => c.trim() !== '' || i < a.length - 1);
+    const title = boxLines(mode === 'comments' && rootComment.length > 0 ? rootComment : d.text);
     const boxed = d.boxed;
     const pad = boxed ? P : 0;
+    const commPad = boxed ? P : HALF;
+    const commH = mode === 'both' && rootComment.length > 0 ? rootComment.length * LINE_H + commPad : 0;
     const inclH = d.includeList.length > 0 ? LINE_H + P : 0;
     const inclText = `${INCLUDE} ${d.includeList.join(', ')}`;
     const titleH = title.length * LINE_H + (boxed ? 2 * P : P);
     const body = measureSeq(d.children);
     const minW = Math.max(
       textW(title, true) + 2 * (boxed ? P : HALF),
+      commH ? textW(rootComment) + 2 * commPad : 0,
       inclH ? measure(inclText) + 2 * P + (boxed ? 2 * P : 0) : 0,
       body.w + 2 * pad,
     );
     const W = Math.ceil(minW);
     const bottomPad = boxed ? P : d.diagramType === 'program' ? 0 : HALF;
-    const H = inclH + titleH + body.h + bottomPad;
+    const H = commH + inclH + titleH + body.h + bottomPad;
 
     const frameFill = fillOf(d.color);
     if (d.diagramType === 'sub') items.push({ t: 'rect', x: 0, y: 0, w: W, h: H, fill: frameFill, stroke: true, rx: ROOT_CORNER });
@@ -503,14 +509,15 @@ export function createLayoutEngine(measure: MeasureFn, opts: LayoutOptions = {})
     } else rect({ x: 0, y: 0, w: W, h: H }, frameFill);
     hits.push({ t: 'root', x: 0, y: 0, w: W, h: H });
 
+    if (commH) rootComment.forEach((l, i) => text(commPad, commPad + i * LINE_H, l, { muted: true }));
     if (inclH) {
-      const bx = pad, by = boxed ? HALF : 0, bw = W - 2 * pad, bh = inclH - (boxed ? HALF : 0);
+      const bx = pad, by = commH + (boxed ? HALF : 0), bw = W - 2 * pad, bh = inclH - (boxed ? HALF : 0);
       const b = HALF;
       items.push({ t: 'poly', closed: true, points: [[bx + b, by], [bx + bw, by], [bx + bw, by + bh - b], [bx + bw - b, by + bh], [bx, by + bh], [bx, by + b]] });
       text(bx + HALF, by + (bh - LINE_H) / 2, inclText, { muted: true });
     }
-    title.forEach((l, i) => text(boxed ? P : HALF, inclH + (boxed ? P : HALF) + i * LINE_H, disp(l), { bold: true }));
-    placeSeq(d.children, { owner: 'root' }, pad, inclH + titleH, W - 2 * pad, body.h);
+    title.forEach((l, i) => text(boxed ? P : HALF, commH + inclH + (boxed ? P : HALF) + i * LINE_H, disp(l), { bold: true }));
+    placeSeq(d.children, { owner: 'root' }, pad, commH + inclH + titleH, W - 2 * pad, body.h);
 
     return { width: W + 1, height: H + 1, items, hits, gaps, font: { family: FONT_FAMILY, size: FONT_SIZE } };
   }

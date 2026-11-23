@@ -96,7 +96,8 @@ interface State {
   // documents (Arranger index & Arranger board)
   newDoc: (d?: Diagram, fileName?: string | null, pos?: { x?: number; y?: number }) => void;
   openDoc: (d: Diagram, fileName: string | null, pos?: { x?: number; y?: number }) => void;
-  openArrz: (entries: { diagram: Diagram; x: number; y: number; fileName: string }[]) => void;
+  /** Opens the diagrams of an arrangement; with `group` they form a group named after the file (desktop). */
+  openArrz: (entries: { diagram: Diagram; x: number; y: number; fileName: string }[], group?: string) => void;
   switchDoc: (id: string) => void;
   closeDoc: (id: string) => void;
   setViewMode: (m: ViewMode) => void;
@@ -104,7 +105,12 @@ interface State {
   togglePinDoc: (id: string) => void;
   autoLayoutDocs: () => void;
   allDocs: () => (DocSlot & { active: boolean; dirty: boolean })[];
-  restoreSession: (docs: { diagram: Diagram; fileName: string | null }[], active: number) => void;
+  restoreSession: (docs: { diagram: Diagram; fileName: string | null; group?: string }[], active: number) => void;
+  // arrangement groups (desktop Arranger groups, basic): doc id -> group name, no entry = default group
+  groups: Record<string, string>;
+  setDocGroup: (id: string, group: string | null) => void;
+  renameGroup: (from: string, to: string) => void;
+  dissolveGroup: (name: string) => void;
   // more desktop functions
   clearDiagram: () => void;
   transmute: () => boolean;
@@ -147,6 +153,7 @@ export const useStore = create<State>((set, get) => ({
   activePinned: false,
   viewMode: 'editor',
   docs: [],
+  groups: {},
   dialog: null,
   contextMenu: null,
   quickDish: null,
@@ -440,9 +447,10 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  openArrz: (entries) => {
+  openArrz: (entries, group) => {
     for (const entry of entries) {
       get().openDoc(entry.diagram, entry.fileName, { x: entry.x, y: entry.y });
+      if (group) get().setDocGroup(get().activeId, group);
     }
     if (entries.length > 1) {
       set({ viewMode: 'arranger' });
@@ -483,6 +491,7 @@ export const useStore = create<State>((set, get) => ({
 
   closeDoc: (id) => {
     const s = get();
+    if (s.groups[id]) get().setDocGroup(id, null);
     if (id !== s.activeId) { set({ docs: s.docs.filter((x) => x.id !== id) }); return; }
     const next = s.docs[s.docs.length - 1];
     if (!next) {
@@ -588,11 +597,35 @@ export const useStore = create<State>((set, get) => ({
   restoreSession: (docs, active) => {
     if (docs.length === 0) return;
     const a = docs[Math.min(Math.max(0, active), docs.length - 1)];
+    const ids = docs.map(() => newId());
+    const groups: Record<string, string> = {};
+    docs.forEach((x, i) => { if (x.group) groups[ids[i]] = x.group; });
     set({
       diagram: a.diagram, savedDiagram: a.diagram, fileName: a.fileName, past: [], future: [], selection: null,
-      activeId: newId(),
-      docs: docs.filter((x) => x !== a).map((x) => ({ id: newId(), diagram: x.diagram, savedDiagram: x.diagram, fileName: x.fileName, past: [], future: [] })),
+      activeId: ids[docs.indexOf(a)],
+      docs: docs.map((x, i) => ({ x, id: ids[i] })).filter(({ x }) => x !== a)
+        .map(({ x, id }) => ({ id, diagram: x.diagram, savedDiagram: x.diagram, fileName: x.fileName, past: [], future: [] })),
+      groups,
     });
+  },
+
+  setDocGroup: (id, group) => {
+    const name = group?.trim();
+    set((s) => {
+      const groups = { ...s.groups };
+      if (name) groups[id] = name; else delete groups[id];
+      return { groups };
+    });
+  },
+
+  renameGroup: (from, to) => {
+    const name = to.trim();
+    if (!name || name === from) return;
+    set((s) => ({ groups: Object.fromEntries(Object.entries(s.groups).map(([id, g]) => [id, g === from ? name : g])) }));
+  },
+
+  dissolveGroup: (name) => {
+    set((s) => ({ groups: Object.fromEntries(Object.entries(s.groups).filter(([, g]) => g !== name)) }));
   },
 
   clearDiagram: () => {

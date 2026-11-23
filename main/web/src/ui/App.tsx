@@ -76,11 +76,12 @@ export function App() {
   useEffect(() => {
     if (!restored) return;
     const h = setTimeout(() => {
+      const { groups } = useStore.getState();
       const docs = useStore.getState().allDocs();
-      setStorageOk(saveSession(docs.map((d) => ({ diagram: d.diagram, fileName: d.fileName })), 0));
+      setStorageOk(saveSession(docs.map((d) => ({ diagram: d.diagram, fileName: d.fileName, group: groups[d.id] })), 0));
     }, 800);
     return () => clearTimeout(h);
-  }, [s.diagram, s.docs, s.fileName, restored]);
+  }, [s.diagram, s.docs, s.fileName, s.groups, restored]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (!anyDirty(useStore.getState())) return;

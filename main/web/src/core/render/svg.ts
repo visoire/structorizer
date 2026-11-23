@@ -68,7 +68,10 @@ export function sceneToSvg(scene: Scene, opts: SvgOptions = {}): string {
     '<defs><pattern id="sw-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
     `<line x1="0" y1="0" x2="0" y2="8" stroke="${pal.hatch}" stroke-width="1.5"/></pattern></defs>`,
   );
-  out.push(`<g shape-rendering="crispEdges" stroke="${pal.stroke}" stroke-width="1" fill="none">`);
+  // zoomed out (scale < 1) the lines keep at least one device pixel, like the desktop's 1 px
+  // lines, instead of shrinking below a pixel and vanishing under crispEdges
+  const strokeW = scale < 1 ? (1 / scale).toFixed(2) : '1';
+  out.push(`<g shape-rendering="crispEdges" stroke="${pal.stroke}" stroke-width="${strokeW}" fill="none">`);
   for (const it of scene.items) {
     switch (it.t) {
       case 'rect': {

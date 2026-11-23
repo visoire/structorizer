@@ -203,13 +203,20 @@ export function parseExpr(src: string): Expr {
     ) {
       const fields: { name: string; value: Expr }[] = [];
       while (pos < toks.length && peek()?.v !== '}') {
-        eat('.');
-        const nameTok = next();
-        const fName = nameTok?.v ?? '';
-        if (!eat(':') && !eat('=') && !eat('<-')) eat(':=');
+        // "smart" record initializer (desktop 3.28-06): an item without a component name
+        // (Date{2026, 11, 23}) gets the name '' and takes the component of its position
+        const a = toks[pos], b = toks[pos + 1];
+        const named = (a?.k === 'id' && (b?.v === ':' || b?.v === '=' || b?.v === '<-' || b?.v === ':='))
+          || (a?.v === '.' && toks[pos + 1]?.k === 'id');
+        let fName = '';
+        if (named) {
+          eat('.');
+          fName = next()?.v ?? '';
+          if (!eat(':') && !eat('=') && !eat('<-')) eat(':=');
+        }
         const value = parseExprBp(0);
         fields.push({ name: fName, value });
-        if (!eat(',')) eat(';');
+        if (!eat(',') && !eat(';')) break;
       }
       eat('}');
       return { t: 'record', typeName, fields };
@@ -289,14 +296,20 @@ function parseTypedef(raw: string): StmtNode {
   if (!m) return { t: 'typedef', name: 'Record', fields: [], raw };
   const name = m[1];
   const fields: { name: string; type: TypeInfo }[] = [];
+  // Pascal style groups share one type: in "month, day: short" the bare "month" waits for the
+  // type of the next "name: type" part (it used to be dropped, which broke positional initializers)
+  let pending: string[] = [];
   for (const part of m[2].split(/[;,]/)) {
     const s = part.trim();
     if (!s) continue;
     const colon = s.indexOf(':');
     if (colon > 0) {
-      const fNames = s.slice(0, colon).split(',').map((x) => x.trim()).filter(Boolean);
+      const fNames = [...pending, ...s.slice(0, colon).split(',').map((x) => x.trim()).filter(Boolean)];
+      pending = [];
       const ty = parseType(s.slice(colon + 1));
       for (const fn of fNames) fields.push({ name: fn, type: ty });
+    } else if (/^\w+$/.test(s)) {
+      pending.push(s);
     } else {
       const words = s.split(/\s+/);
       if (words.length >= 2) {

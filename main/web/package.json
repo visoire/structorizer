@@ -1,7 +1,7 @@
 {
   "name": "structorizer-web",
   "private": true,
-  "version": "3.32.35-web.9",
+  "version": "3.32.35-web.10",
   "description": "Browser version of Structorizer, the Nassi-Shneiderman diagram editor. Runs fully client-side.",
   "license": "GPL-3.0-or-later",
   "type": "module",

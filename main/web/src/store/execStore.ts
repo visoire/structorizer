@@ -28,6 +28,8 @@ interface ExecStoreState {
   setOpen: (open: boolean) => void;
   setTurtleOpen: (open: boolean) => void;
   toggleCoverage: () => void;
+  /** Reset the execution counters and coverage marks (Coverage on: they add up over runs). */
+  resetCoverage: () => void;
   setSpeed: (ms: number) => void;
   toggleBreakpoint: (id?: string) => void;
   clearBreakpoints: () => void;
@@ -44,6 +46,10 @@ interface ExecStoreState {
 let activeGen: Generator<ExecEvent, ExecResult, string | undefined> | null = null;
 let timerId: ReturnType<typeof setTimeout> | null = null;
 let pausedAtStep = false;
+/** Kind of the last event the generator produced (an `output` event is no step of its own). */
+let lastEvent: ExecEvent['t'] | null = null;
+/** Status before an INPUT prompt: stepping stays stepping after the value was entered. */
+let statusBeforeInput: ExecStatus = 'running';
 
 function clearTimer() {
   if (timerId !== null) {
@@ -74,8 +80,10 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
         return false;
       }
       const ev = res.value;
+      lastEvent = ev.t;
       if (ev.t === 'input') {
         clearTimer();
+        statusBeforeInput = get().status === 'paused' ? 'paused' : 'running';
         set((s) => ({
           status: 'waitingInput',
           runningElementId: ev.elementId,
@@ -132,6 +140,16 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
     }
   };
 
+  /**
+   * One Step: advance until the next element is reached. An OUTPUT element yields an extra
+   * `output` event after its step; without this loop the highlight stayed on the OUTPUT element
+   * and a second Step was needed.
+   */
+  const stepOnce = () => {
+    lastEvent = null;
+    while (advanceOne() && lastEvent === 'output') { /* continue to the next element */ }
+  };
+
   const scheduleRun = () => {
     clearTimer();
     if (get().status !== 'running' || !activeGen) return;
@@ -174,7 +192,16 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
 
     setOpen: (open) => set({ open }),
     setTurtleOpen: (turtleOpen) => set({ turtleOpen }),
-    toggleCoverage: () => set((s) => ({ coverageOverlay: !s.coverageOverlay })),
+    // like the desktop's "Collect Run Data": switching it off wipes the collected counts
+    toggleCoverage: () => {
+      if (get().coverageOverlay) get().resetCoverage();
+      set((s) => ({ coverageOverlay: !s.coverageOverlay }));
+    },
+    resetCoverage: () => {
+      get().execState.execCounts.clear();
+      get().execState.covered.clear();
+      set((s) => ({ tick: s.tick + 1 }));
+    },
     setSpeed: (speedMs) => {
       set({ speedMs });
       if (get().status === 'running') scheduleRun();
@@ -197,6 +224,12 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
       const ds = useStore.getState();
       const pool = ds.allDocs().map((d) => d.diagram);
       const execState = createExecState();
+      if (get().coverageOverlay) {
+        // run data tracking (desktop): counts add up over several runs until they are reset
+        const prev = get().execState;
+        for (const [id, c] of prev.execCounts) execState.execCounts.set(id, c);
+        for (const id of prev.covered) execState.covered.add(id);
+      }
       pausedAtStep = false;
       activeGen = executeDiagram(ds.diagram, { pool, args, state: execState });
       set((s) => ({
@@ -212,7 +245,7 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
         tick: s.tick + 1,
       }));
       if (mode === 'step') {
-        advanceOne();
+        stepOnce();
       } else {
         if (advanceOne() && get().status === 'running') {
           scheduleRun();
@@ -229,7 +262,7 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
       if (get().status === 'waitingInput') return;
       pausedAtStep = true;
       set({ status: 'paused' });
-      advanceOne();
+      stepOnce();
     },
 
     resume: () => {
@@ -263,9 +296,14 @@ export const useExecStore = create<ExecStoreState>((set, get) => {
 
     submitInput: (value) => {
       if (get().status !== 'waitingInput' || !activeGen) return;
-      const wasRunning = get().speedMs >= 0;
+      const wasRunning = statusBeforeInput === 'running';
       set({ status: wasRunning ? 'running' : 'paused', inputRequest: null });
-      if (advanceOne(value) && get().status === 'running') {
+      lastEvent = null;
+      const more = advanceOne(value);
+      if (!wasRunning) {
+        // stepping: also finish a following output so the next element is highlighted
+        if (more && lastEvent === 'output') stepOnce();
+      } else if (more && get().status === 'running') {
         scheduleRun();
       }
     },
